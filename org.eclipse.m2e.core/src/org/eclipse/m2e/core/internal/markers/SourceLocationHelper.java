@@ -127,8 +127,12 @@ public class SourceLocationHelper {
         .getSource().getModelId(), inputLocation.getLineNumber(), inputLocation.getColumnNumber()
         - elementName.length() - COLUMN_START_OFFSET, inputLocation.getColumnNumber() - COLUMN_END_OFFSET);
     inputLocation = mavenProject.getModel().getParent().getLocation(SELF);
+    if(inputLocation == null) {
+      // parent location cannot be determined for participant-added parents
+      return new SourceLocation(1, 1, 1, causeLocation);
+    }
     return new SourceLocation(inputLocation.getLineNumber(), inputLocation.getColumnNumber() - PARENT.length()
-        - COLUMN_START_OFFSET, inputLocation.getColumnNumber() - COLUMN_END_OFFSET, causeLocation);
+            - COLUMN_START_OFFSET, inputLocation.getColumnNumber() - COLUMN_END_OFFSET, causeLocation);
   }
 
   private static InputLocation findExecutionLocation(Plugin plugin, String executionId) {
