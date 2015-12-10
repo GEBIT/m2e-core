@@ -56,6 +56,8 @@ import org.eclipse.osgi.util.NLS;
 
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 
+import org.apache.maven.AbstractMavenLifecycleParticipant;
+import org.apache.maven.MavenExecutionException;
 import org.apache.maven.artifact.repository.MavenArtifactRepository;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenExecutionRequest;
@@ -389,8 +391,8 @@ public class ProjectRegistryManager {
           context.forcePomFiles(newState.getVersionedDependents(mavenParentCapability, true));
 
           // refresh projects that import dependencyManagement from this one
-          MavenCapability mavenArtifactImportCapability = MavenCapability.createMavenArtifactImport(oldFacade
-              .getArtifactKey());
+          MavenCapability mavenArtifactImportCapability = MavenCapability
+              .createMavenArtifactImport(oldFacade.getArtifactKey());
           context.forcePomFiles(newState.getVersionedDependents(mavenArtifactImportCapability, true));
         }
 
@@ -703,6 +705,20 @@ public class ProjectRegistryManager {
         if(pom.isAccessible()) {
           mavenResult = getMaven().readMavenProject(pom.getLocation().toFile(), context.newProjectBuildingRequest());
           mavenProject = mavenResult.getProject();
+          ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+          try {
+            for(AbstractMavenLifecycleParticipant listener : getLifecycleParticipants(
+                Collections.singleton(mavenProject))) {
+              Thread.currentThread().setContextClassLoader(listener.getClass().getClassLoader());
+
+              listener.afterProjectsRead(context.getSession());
+            }
+          } catch(MavenExecutionException e) {
+            Status status = new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, 0, e.getMessage(), e);
+            throw new CoreException(status);
+          } finally {
+            Thread.currentThread().setContextClassLoader(originalClassLoader);
+          }
         }
 
         MarkerUtils.addEditorHintMarkers(markerManager, pom, mavenProject, IMavenConstants.MARKER_POM_LOADING_ID);
@@ -720,6 +736,42 @@ public class ProjectRegistryManager {
         return mavenProjectFacade;
       }
     }, monitor);
+  }
+
+  private Collection<AbstractMavenLifecycleParticipant> getLifecycleParticipants(Collection<MavenProject> projects)
+      throws CoreException {
+    Collection<AbstractMavenLifecycleParticipant> lifecycleListeners = new LinkedHashSet<AbstractMavenLifecycleParticipant>();
+
+    ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      try {
+        lifecycleListeners.addAll(maven.getPlexusContainer().lookupList(AbstractMavenLifecycleParticipant.class));
+      } catch(ComponentLookupException e) {
+        // this is just silly, lookupList should return an empty list!
+        log.warn("Failed to lookup lifecycle participants: " + e.getMessage());
+      }
+
+      Collection<ClassLoader> scannedRealms = new HashSet<ClassLoader>();
+
+      for(MavenProject project : projects) {
+        ClassLoader projectRealm = project.getClassRealm();
+
+        if(projectRealm != null && scannedRealms.add(projectRealm)) {
+          Thread.currentThread().setContextClassLoader(projectRealm);
+
+          try {
+            lifecycleListeners.addAll(maven.getPlexusContainer().lookupList(AbstractMavenLifecycleParticipant.class));
+          } catch(ComponentLookupException e) {
+            // this is just silly, lookupList should return an empty list!
+            log.warn("Failed to lookup lifecycle participants: " + e.getMessage());
+          }
+        }
+      }
+    } finally {
+      Thread.currentThread().setContextClassLoader(originalClassLoader);
+    }
+
+    return lifecycleListeners;
   }
 
   /*package*/Map<String, List<MojoExecution>> calculateExecutionPlans(IFile pom, MavenProject mavenProject,
