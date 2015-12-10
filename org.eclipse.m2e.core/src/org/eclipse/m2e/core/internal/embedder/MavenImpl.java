@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
@@ -79,8 +80,10 @@ import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.dag.CycleDetectedException;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 
+import org.apache.maven.AbstractMavenLifecycleParticipant;
 import org.apache.maven.DefaultMaven;
 import org.apache.maven.Maven;
+import org.apache.maven.MavenExecutionException;
 import org.apache.maven.RepositoryUtils;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.InvalidRepositoryException;
@@ -166,6 +169,7 @@ import org.eclipse.m2e.core.embedder.IMavenConfigurationChangeListener;
 import org.eclipse.m2e.core.embedder.IMavenExecutionContext;
 import org.eclipse.m2e.core.embedder.ISettingsChangeListener;
 import org.eclipse.m2e.core.embedder.MavenConfigurationChangeEvent;
+import org.eclipse.m2e.core.internal.ExtensionReader;
 import org.eclipse.m2e.core.internal.IMavenConstants;
 import org.eclipse.m2e.core.internal.MavenPluginActivator;
 import org.eclipse.m2e.core.internal.Messages;
@@ -191,6 +195,9 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
   private final ArrayList<ILocalRepositoryListener> localRepositoryListeners = new ArrayList<ILocalRepositoryListener>();
 
+  private final Set<String> lifecycleParticipants;
+
+
   /**
    * Cached parsed settings.xml instance
    */
@@ -204,6 +211,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
   public MavenImpl(IMavenConfiguration mavenConfiguration) {
     this.mavenConfiguration = mavenConfiguration;
+    this.lifecycleParticipants = ExtensionReader.readLifecycleParticipants();
     mavenConfiguration.addConfigurationChangeListener(this);
   }
 
@@ -594,7 +602,11 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
           ProjectBuildingRequest configuration = request.getProjectBuildingRequest();
           configuration.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
           configuration.setRepositorySession(createRepositorySession(request));
-          return lookup(ProjectBuilder.class).build(pomFile, configuration).getProject();
+          MavenProject project = lookup(ProjectBuilder.class).build(pomFile, configuration).getProject();
+          if (hasLifecycleParticipants(project)) {
+            processLifecycleParticipants(project, request, configuration.getRepositorySession());
+          }
+          return project;
         } catch(ProjectBuildingException ex) {
           throw new CoreException(new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, -1,
               Messages.MavenImpl_error_read_project, ex));
@@ -630,6 +642,12 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       ProjectBuildingResult projectBuildingResult = lookup(ProjectBuilder.class).build(pomFile, configuration);
       result.setProject(projectBuildingResult.getProject());
       result.setDependencyResolutionResult(projectBuildingResult.getDependencyResolutionResult());
+      if (hasLifecycleParticipants(projectBuildingResult.getProject())) {
+        MavenExecutionRequest executionRequest = createExecutionRequest();
+        populateDefaults(executionRequest);
+        ((DefaultMavenExecutionRequest) executionRequest).setProjectBuildingConfiguration(configuration);
+        processLifecycleParticipants(projectBuildingResult.getProject(), executionRequest, configuration.getRepositorySession());
+      }
     } catch(ProjectBuildingException ex) {
       if(ex.getResults() != null && ex.getResults().size() == 1) {
         ProjectBuildingResult projectBuildingResult = ex.getResults().get(0);
@@ -643,6 +661,65 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       log.debug("Read Maven project: {} in {} ms", pomFile.getAbsoluteFile(), System.currentTimeMillis() - start); //$NON-NLS-1$
     }
     return result;
+  }
+  /*package*/boolean hasLifecycleParticipants(MavenProject project) {
+    return (project != null && !lifecycleParticipants.isEmpty());
+  }
+
+  /*package*/void processLifecycleParticipants(MavenProject project, MavenExecutionRequest request, RepositorySystemSession repoSession) throws CoreException {
+    processLifecycleParticipants(Collections.singletonList(project), getLifecycleParticipants(project), request,
+        repoSession);
+  }
+
+  /*package*/void processLifecycleParticipants(List<MavenProject> projects,
+      Collection<AbstractMavenLifecycleParticipant> participants, MavenExecutionRequest request,
+      RepositorySystemSession repoSession) throws CoreException {
+    MavenExecutionResult result = new DefaultMavenExecutionResult();
+    MavenSession session = new MavenSession(plexus, repoSession, request, result);
+    ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      session.setProjects(projects);
+      for(AbstractMavenLifecycleParticipant listener : participants) {
+        Thread.currentThread().setContextClassLoader(listener.getClass().getClassLoader());
+
+        listener.afterProjectsRead(session);
+      }
+    } catch(MavenExecutionException e) {
+      Status status = new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, 0, e.getMessage(), e);
+      throw new CoreException(status);
+    } finally {
+      Thread.currentThread().setContextClassLoader(originalClassLoader);
+    }
+  }
+
+  private Collection<AbstractMavenLifecycleParticipant> getLifecycleParticipants(MavenProject project)
+      throws CoreException {
+    Collection<AbstractMavenLifecycleParticipant> participants = new LinkedHashSet<AbstractMavenLifecycleParticipant>();
+
+    ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      ClassLoader projectRealm = project.getClassRealm();
+      if(projectRealm != null) {
+        Thread.currentThread().setContextClassLoader(projectRealm);
+
+        for(String hint : lifecycleParticipants) {
+          try {
+            AbstractMavenLifecycleParticipant participant = plexus.lookup(AbstractMavenLifecycleParticipant.class, hint);
+            if(participant != null) {
+              participants.add(participant);
+            }
+          } catch(ComponentLookupException e) {
+            // this is just silly, lookupList should return an empty list!
+            log.debug("Failed to lookup lifecycle participant {} for project {}: {}", hint, project.getName(),
+                e.getMessage());
+          }
+        }
+      }
+    } finally {
+      Thread.currentThread().setContextClassLoader(originalClassLoader);
+    }
+
+    return participants;
   }
 
   public Map<File, MavenExecutionResult> readMavenProjects(Collection<File> pomFiles,
@@ -659,6 +736,28 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       projectBuildingResults = lookup(ProjectBuilder.class).build(new ArrayList<>(pomFiles),
           false,
           configuration);
+      List<MavenProject> projects = projectBuildingResults.stream().map(it -> it.getProject())
+          .collect(Collectors.toList());
+      Map<Collection<AbstractMavenLifecycleParticipant>, List<MavenProject>> projectsMap = new HashMap<>();
+      for(MavenProject project : projects) {
+        if(!hasLifecycleParticipants(project)) {
+          continue;
+        }
+        Collection<AbstractMavenLifecycleParticipant> participants = getLifecycleParticipants(project);
+        List<MavenProject> entry = projectsMap.get(participants);
+        if(entry == null) {
+          entry = new ArrayList<>();
+          projectsMap.put(participants, entry);
+        }
+        entry.add(project);
+      }
+      for(Map.Entry<Collection<AbstractMavenLifecycleParticipant>, List<MavenProject>> entry : projectsMap.entrySet()) {
+        MavenExecutionRequest executionRequest = createExecutionRequest();
+        populateDefaults(executionRequest);
+        ((DefaultMavenExecutionRequest) executionRequest).setProjectBuildingConfiguration(configuration);
+        processLifecycleParticipants(entry.getValue(), entry.getKey(), executionRequest,
+            configuration.getRepositorySession());
+      }
     } catch(ProjectBuildingException ex) {
       if(ex.getResults() != null) {
         projectBuildingResults = ex.getResults();
