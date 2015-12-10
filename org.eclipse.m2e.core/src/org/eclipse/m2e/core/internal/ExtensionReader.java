@@ -13,7 +13,9 @@ package org.eclipse.m2e.core.internal;
 
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.osgi.framework.Bundle;
 import org.slf4j.Logger;
@@ -47,6 +49,8 @@ public class ExtensionReader {
 
   public static final String EXTENSION_INCREMENTAL_BUILD_FRAMEWORKS = IMavenConstants.PLUGIN_ID
       + ".incrementalBuildFrameworks"; //$NON-NLS-1$
+
+  public static final String EXTENSION_LIFECYCLE_PARTICIPANTS = IMavenConstants.PLUGIN_ID + ".lifecycleParticipants"; //$NON-NLS-1$
 
   private static final String ELEMENT_LOCAL_ARCHETYPE = "local"; //$NON-NLS-1$
 
@@ -155,5 +159,25 @@ public class ExtensionReader {
     }
 
     return frameworks;
+  }
+
+  public static Set<String> readLifecycleParticipants() {
+    Set<String> participantHints = new HashSet<String>();
+
+    IExtensionRegistry registry = Platform.getExtensionRegistry();
+    IExtensionPoint lifecycleParticipantsPoint = registry.getExtensionPoint(EXTENSION_LIFECYCLE_PARTICIPANTS);
+    if(lifecycleParticipantsPoint != null) {
+      IExtension[] mappingsExtensions = lifecycleParticipantsPoint.getExtensions();
+      for(IExtension extension : mappingsExtensions) {
+        IConfigurationElement[] elements = extension.getConfigurationElements();
+        for(IConfigurationElement element : elements) {
+          if(element.getName().equals("participant")) {
+            participantHints.add(element.getAttribute("hint"));
+          }
+        }
+      }
+    }
+
+    return participantHints;
   }
 }
