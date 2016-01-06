@@ -219,7 +219,9 @@ public class ClasspathDescriptor implements IClasspathDescriptor {
     ListIterator<IClasspathEntryDescriptor> iter = entries.listIterator();
     if(uniquePaths) {
       while(iter.hasNext()) {
-        if(iter.next().getPath().equals(descriptor.getPath())) {
+        IClasspathEntryDescriptor current = iter.next();
+        if(current.getPath().equals(descriptor.getPath())) {
+          descriptor.setExported(current.isExported());
           iter.set(descriptor);
           return; // PAY ATTENTION to this early return. Ain't pretty, but works.
         }
