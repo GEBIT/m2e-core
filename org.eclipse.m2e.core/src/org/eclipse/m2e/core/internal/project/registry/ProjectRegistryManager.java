@@ -709,7 +709,7 @@ public class ProjectRegistryManager {
           mavenResult = getMaven().readMavenProject(pom.getLocation().toFile(), context.newProjectBuildingRequest());
           mavenProject = mavenResult.getProject();
 
-          if(!lifecycleParticipants.isEmpty()) {
+          if(mavenProject != null && !lifecycleParticipants.isEmpty()) {
             ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
             List<MavenProject> oldProjects = context.getSession().getProjects();
             try {
