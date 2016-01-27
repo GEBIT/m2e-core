@@ -146,8 +146,6 @@ public class ProjectRegistryManager {
 
   private final Set<IMavenProjectChangedListener> projectChangeListeners = new LinkedHashSet<IMavenProjectChangedListener>();
 
-  /*package*/final Set<String> lifecycleParticipants;
-
   private volatile Thread syncRefreshThread;
 
   /**
@@ -168,7 +166,6 @@ public class ProjectRegistryManager {
     this.projectRegistry = (state != null && state.isValid()) ? state : new ProjectRegistry();
 
     this.mavenProjectCache = createProjectCache();
-    this.lifecycleParticipants = ExtensionReader.readLifecycleParticipants();
   }
 
   /**
@@ -708,25 +705,6 @@ public class ProjectRegistryManager {
         if(pom.isAccessible()) {
           mavenResult = getMaven().readMavenProject(pom.getLocation().toFile(), context.newProjectBuildingRequest());
           mavenProject = mavenResult.getProject();
-
-          if(mavenProject != null && !lifecycleParticipants.isEmpty()) {
-            ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-            List<MavenProject> oldProjects = context.getSession().getProjects();
-            try {
-              context.getSession().setProjects(Collections.singletonList(mavenProject));
-              for(AbstractMavenLifecycleParticipant listener : getLifecycleParticipants(mavenProject)) {
-                Thread.currentThread().setContextClassLoader(listener.getClass().getClassLoader());
-
-                listener.afterProjectsRead(context.getSession());
-              }
-            } catch(MavenExecutionException e) {
-              Status status = new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, 0, e.getMessage(), e);
-              throw new CoreException(status);
-            } finally {
-              Thread.currentThread().setContextClassLoader(originalClassLoader);
-              context.getSession().setProjects(oldProjects != null ? oldProjects : Collections.emptyList());
-            }
-          }
         }
 
         MarkerUtils.addEditorHintMarkers(markerManager, pom, mavenProject, IMavenConstants.MARKER_POM_LOADING_ID);
@@ -744,36 +722,6 @@ public class ProjectRegistryManager {
         return mavenProjectFacade;
       }
     }, monitor);
-  }
-
-  /*package*/Collection<AbstractMavenLifecycleParticipant> getLifecycleParticipants(MavenProject project)
-      throws CoreException {
-    Collection<AbstractMavenLifecycleParticipant> participants = new LinkedHashSet<AbstractMavenLifecycleParticipant>();
-
-    ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-    try {
-      ClassLoader projectRealm = project.getClassRealm();
-      if(projectRealm != null) {
-        Thread.currentThread().setContextClassLoader(projectRealm);
-
-        for(String hint : lifecycleParticipants) {
-          try {
-            AbstractMavenLifecycleParticipant participant = maven.getPlexusContainer()
-                .lookup(AbstractMavenLifecycleParticipant.class, hint);
-            if(participant != null) {
-              participants.add(participant);
-            }
-          } catch(ComponentLookupException e) {
-            // this is just silly, lookupList should return an empty list!
-            log.warn("Failed to lookup lifecycle participants: " + e.getMessage());
-          }
-        }
-      }
-    } finally {
-      Thread.currentThread().setContextClassLoader(originalClassLoader);
-    }
-
-    return participants;
   }
 
   /*package*/Map<String, List<MojoExecution>> calculateExecutionPlans(IFile pom, MavenProject mavenProject,
