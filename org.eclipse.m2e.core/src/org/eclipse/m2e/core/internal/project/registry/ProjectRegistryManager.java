@@ -1171,7 +1171,8 @@ public class ProjectRegistryManager {
         }
       }
     };
-    return CacheBuilder.newBuilder().maximumSize(5).removalListener(removalListener).build();
+    return CacheBuilder.newBuilder().maximumSize(Long.getLong("m2e.projectCacheSize", 5))
+        .removalListener(removalListener).build();
   }
 
   private Set<IFile> flushCaches(MutableProjectRegistry newState, IFile pom, MavenProjectFacade facade,
