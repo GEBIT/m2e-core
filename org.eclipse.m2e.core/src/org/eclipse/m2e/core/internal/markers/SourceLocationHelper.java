@@ -94,7 +94,11 @@ public class SourceLocationHelper {
 
   public static SourceLocation findLocation(MavenProject mavenProject, MojoExecutionKey mojoExecutionKey) {
     Plugin plugin = mavenProject.getPlugin(mojoExecutionKey.getGroupId() + ":" + mojoExecutionKey.getArtifactId());
-
+    if(plugin == null) {
+      // Should never happen
+      InputLocation inputLocation = mavenProject.getModel().getLocation(SELF);
+      return new SourceLocation(inputLocation.getLineNumber(), 1, inputLocation.getColumnNumber() - COLUMN_END_OFFSET);
+    }
     InputLocation inputLocation = plugin.getLocation(SELF);
     if(inputLocation == null || inputLocation.getLineNumber() < 0) {
       // Plugin is specified in the maven lifecycle definition, not explicit in current pom or parent pom
