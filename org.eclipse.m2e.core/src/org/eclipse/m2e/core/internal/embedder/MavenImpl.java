@@ -608,7 +608,9 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
           configuration.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
           configuration.setRepositorySession(createRepositorySession(request));
           MavenProject project = lookup(ProjectBuilder.class).build(pomFile, configuration).getProject();
-          processLifecycleParticipants(project, request, configuration.getRepositorySession());
+          if (hasLifecycleParticipants(project)) {
+            processLifecycleParticipants(project, request, configuration.getRepositorySession());
+          }
           return project;
         } catch(ProjectBuildingException ex) {
           throw new CoreException(new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, -1,
@@ -646,10 +648,12 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       ProjectBuildingResult projectBuildingResult = lookup(ProjectBuilder.class).build(pomFile, configuration);
       result.setProject(projectBuildingResult.getProject());
       result.setDependencyResolutionResult(projectBuildingResult.getDependencyResolutionResult());
-      MavenExecutionRequest executionRequest = createExecutionRequest();
-      populateDefaults(executionRequest);
-      ((DefaultMavenExecutionRequest) executionRequest).setProjectBuildingConfiguration(configuration);
-      processLifecycleParticipants(projectBuildingResult.getProject(), executionRequest, configuration.getRepositorySession());
+      if (hasLifecycleParticipants(projectBuildingResult.getProject())) {
+        MavenExecutionRequest executionRequest = createExecutionRequest();
+        populateDefaults(executionRequest);
+        ((DefaultMavenExecutionRequest) executionRequest).setProjectBuildingConfiguration(configuration);
+        processLifecycleParticipants(projectBuildingResult.getProject(), executionRequest, configuration.getRepositorySession());
+      }
     } catch(ProjectBuildingException ex) {
       if(ex.getResults() != null && ex.getResults().size() == 1) {
         ProjectBuildingResult projectBuildingResult = ex.getResults().get(0);
@@ -664,25 +668,26 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     }
     return result;
   }
+  /*package*/boolean hasLifecycleParticipants(MavenProject project) {
+    return (project != null && !lifecycleParticipants.isEmpty());
+  }
 
   /*package*/void processLifecycleParticipants(MavenProject project, MavenExecutionRequest request, RepositorySystemSession repoSession) throws CoreException {
-    if(project != null && !lifecycleParticipants.isEmpty()) {
-      MavenExecutionResult result = new DefaultMavenExecutionResult();
-      MavenSession session = new MavenSession(plexus, repoSession, request, result);
-      ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-      try {
-        session.setProjects(Collections.singletonList(project));
-        for(AbstractMavenLifecycleParticipant listener : getLifecycleParticipants(project)) {
-          Thread.currentThread().setContextClassLoader(listener.getClass().getClassLoader());
+    MavenExecutionResult result = new DefaultMavenExecutionResult();
+    MavenSession session = new MavenSession(plexus, repoSession, request, result);
+    ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      session.setProjects(Collections.singletonList(project));
+      for(AbstractMavenLifecycleParticipant listener : getLifecycleParticipants(project)) {
+        Thread.currentThread().setContextClassLoader(listener.getClass().getClassLoader());
 
-          listener.afterProjectsRead(session);
-        }
-      } catch(MavenExecutionException e) {
-        Status status = new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, 0, e.getMessage(), e);
-        throw new CoreException(status);
-      } finally {
-        Thread.currentThread().setContextClassLoader(originalClassLoader);
+        listener.afterProjectsRead(session);
       }
+    } catch(MavenExecutionException e) {
+      Status status = new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, 0, e.getMessage(), e);
+      throw new CoreException(status);
+    } finally {
+      Thread.currentThread().setContextClassLoader(originalClassLoader);
     }
   }
 
