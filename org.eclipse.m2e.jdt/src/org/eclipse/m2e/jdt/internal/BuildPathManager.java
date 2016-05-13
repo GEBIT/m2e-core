@@ -39,6 +39,7 @@ import org.osgi.framework.BundleContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResourceChangeEvent;
@@ -69,6 +70,7 @@ import org.apache.maven.project.MavenProject;
 
 import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
+import org.eclipse.m2e.core.embedder.ILocalRepositoryListener;
 import org.eclipse.m2e.core.embedder.IMaven;
 import org.eclipse.m2e.core.embedder.IMavenConfiguration;
 import org.eclipse.m2e.core.internal.IMavenConstants;
@@ -130,6 +132,8 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
 
   private final DefaultClasspathManagerDelegate defaultDelegate;
 
+  private Set<ArtifactKey> needSourceAndJavadocRefresh = new HashSet<>();
+
   public BuildPathManager(IMavenProjectRegistry projectManager, IndexManager indexManager, BundleContext bundleContext,
       File stateLocationDir) {
     this.projectManager = projectManager;
@@ -140,6 +144,57 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
     this.maven = MavenPlugin.getMaven();
     this.downloadSourcesJob = new DownloadSourcesJob(this);
     this.defaultDelegate = new DefaultClasspathManagerDelegate();
+
+    MavenPlugin.getMaven().addLocalRepositoryListener(new ILocalRepositoryListener() {
+
+      public void artifactInstalled(File repositoryBasedir, ArtifactKey baseArtifact, ArtifactKey artifact,
+          File artifactFile) {
+        if(considerForSourceAndJavadocRefresh(artifact)) {
+          addForSourceAndJavadocRefresh(artifact);
+        }
+      }
+    });
+  }
+
+  /**
+   * Checks whether the given artifact shall be considered for automatic update of sources and javadoc attachments.
+   * Returns <code>false</code> if the given artifact shall not be considered, e.g. because the artifact is a source or
+   * javadoc attachment itself.
+   *
+   * @param artifact the artifact to check
+   */
+  private boolean considerForSourceAndJavadocRefresh(ArtifactKey artifact) {
+    String classifier = artifact.getClassifier();
+    if(IMavenConstants.SOURCES_CLASSIFIER.equals(classifier) || IMavenConstants.JAVADOC_CLASSIFIER.equals(classifier)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Remember updated artifacts so that we know later that we have to fetch sources for them.
+   *
+   * @param key the artifact that was updated in the local repository
+   */
+  private void addForSourceAndJavadocRefresh(ArtifactKey key) {
+    // use only the base version and strip off the classifier
+    DefaultArtifact artifact = new DefaultArtifact(key.getGroupId(), key.getArtifactId(), null, key.getVersion());
+    synchronized(needSourceAndJavadocRefresh) {
+      needSourceAndJavadocRefresh.add(new ArtifactKey(artifact));
+    }
+  }
+
+  /**
+   * Checks if the given artifact has been updated in the local repository. Returns <code>true</code> if the artifact
+   * has been updated and removes the fact at the same time. In other words, this method will only return
+   * <code>true</code> once for the same artifact, until the same artifact will be updated again.
+   *
+   * @param artifact the artifact to check
+   */
+  private boolean removeArtifactForSourceAndJavadocRefresh(ArtifactKey artifact) {
+    synchronized(needSourceAndJavadocRefresh) {
+      return needSourceAndJavadocRefresh.remove(artifact);
+    }
   }
 
   public static IClasspathEntry getMavenContainerEntry(IJavaProject javaProject) {
@@ -311,20 +366,27 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
 
         ArtifactKey aKey = desc.getArtifactKey();
         if(aKey != null) { // maybe we should try to find artifactKey little harder here?
-          boolean downloadSources = desc.getSourceAttachmentPath() == null && srcPath == null
-              && mavenConfiguration.isDownloadSources();
-          boolean downloadJavaDoc = desc.getJavadocUrl() == null && javaDocUrl == null
-              && mavenConfiguration.isDownloadJavaDoc();
+          boolean downloadSources = false;
+          boolean downloadJavaDoc = false;
 
-          scheduleDownload(facade.getProject(), facade.getMavenProject(monitor), aKey, downloadSources, downloadJavaDoc);
+          if(mavenConfiguration.isDownloadSources() || mavenConfiguration.isDownloadJavaDoc()) {
+            boolean artifactNeedsSourceAndJavadocRefresh = removeArtifactForSourceAndJavadocRefresh(aKey);
+            downloadSources = mavenConfiguration.isDownloadSources() && (artifactNeedsSourceAndJavadocRefresh
+                || (desc.getSourceAttachmentPath() == null && srcPath == null));
+            downloadJavaDoc = mavenConfiguration.isDownloadJavaDoc()
+                && (artifactNeedsSourceAndJavadocRefresh || (desc.getJavadocUrl() == null && javaDocUrl == null));
+          }
+
+          scheduleDownload(facade.getProject(), facade.getMavenProject(monitor), aKey, downloadSources,
+              downloadJavaDoc);
         }
       }
     }
   }
 
   private boolean isUnavailable(ArtifactKey a, List<ArtifactRepository> repositories) throws CoreException {
-    return maven.isUnavailable(a.getGroupId(), a.getArtifactId(), a.getVersion(),
-        "jar" /*type*/, a.getClassifier(), repositories); //$NON-NLS-1$
+    return maven.isUnavailable(a.getGroupId(), a.getArtifactId(), a.getVersion(), "jar" /*type*/, a.getClassifier(), //$NON-NLS-1$
+        repositories);
   }
 
 //  public void downloadSources(IProject project, ArtifactKey artifact, boolean downloadSources, boolean downloadJavaDoc) throws CoreException {
@@ -449,8 +511,8 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
 
   private ArtifactKey findArtifactInIndex(IProject project, IClasspathEntry entry) throws CoreException {
     IFile jarFile = project.getWorkspace().getRoot().getFile(entry.getPath());
-    File file = jarFile == null || jarFile.getLocation() == null ? entry.getPath().toFile() : jarFile.getLocation()
-        .toFile();
+    File file = jarFile == null || jarFile.getLocation() == null ? entry.getPath().toFile()
+        : jarFile.getLocation().toFile();
 
     IndexedArtifactFile iaf = indexManager.getIndex(project).identify(file);
     if(iaf != null) {
@@ -542,8 +604,8 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
         os.close();
       }
     } catch(IOException e) {
-      throw new CoreException(new Status(IStatus.ERROR, MavenJdtPlugin.PLUGIN_ID, -1,
-          "Can't save classpath container changes", e));
+      throw new CoreException(
+          new Status(IStatus.ERROR, MavenJdtPlugin.PLUGIN_ID, -1, "Can't save classpath container changes", e));
     }
 
     // update classpath container. suboptimal as this will re-calculate classpath
@@ -650,8 +712,8 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
     // can't use Maven resolve methods since they mark artifacts as not-found even if they could be resolved remotely  
     try {
       ArtifactRepository localRepository = maven.getLocalRepository();
-      String relPath = maven.getArtifactPath(localRepository, a.getGroupId(), a.getArtifactId(), a.getVersion(),
-          "jar", classifier); //$NON-NLS-1$
+      String relPath = maven.getArtifactPath(localRepository, a.getGroupId(), a.getArtifactId(), a.getVersion(), "jar", //$NON-NLS-1$
+          classifier);
       File file = new File(localRepository.getBasedir(), relPath).getCanonicalFile();
       if(file.canRead()) {
         return file;
@@ -785,7 +847,8 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
       boolean downloadSources, boolean downloadJavaDoc) throws CoreException {
     ArtifactKey sourcesArtifact = new ArtifactKey(a.getGroupId(), a.getArtifactId(), a.getVersion(),
         getSourcesClassifier(a.getClassifier()));
-    ArtifactKey javadocArtifact = new ArtifactKey(a.getGroupId(), a.getArtifactId(), a.getVersion(), CLASSIFIER_JAVADOC);
+    ArtifactKey javadocArtifact = new ArtifactKey(a.getGroupId(), a.getArtifactId(), a.getVersion(),
+        CLASSIFIER_JAVADOC);
 
     if(repositories != null) {
       downloadSources = downloadSources && !isUnavailable(sourcesArtifact, repositories);
@@ -816,14 +879,14 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
       for(int i = 0; i < cp.length; i++ ) {
         IClasspathEntry entry = cp[i];
         if(IClasspathEntry.CPE_LIBRARY == entry.getEntryKind() && entry.equals(fragment.getRawClasspathEntry())) {
-          List<IClasspathAttribute> attributes = new ArrayList<IClasspathAttribute>(Arrays.asList(entry
-              .getExtraAttributes()));
+          List<IClasspathAttribute> attributes = new ArrayList<IClasspathAttribute>(
+              Arrays.asList(entry.getExtraAttributes()));
 
           if(srcPath == null) {
             // configure javadocs if available
             if(javaDocUrl != null) {
-              attributes.add(JavaCore.newClasspathAttribute(IClasspathAttribute.JAVADOC_LOCATION_ATTRIBUTE_NAME,
-                  javaDocUrl));
+              attributes
+                  .add(JavaCore.newClasspathAttribute(IClasspathAttribute.JAVADOC_LOCATION_ATTRIBUTE_NAME, javaDocUrl));
             }
           }
 
