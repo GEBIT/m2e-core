@@ -17,6 +17,7 @@ import org.apache.maven.classrealm.ClassRealmManagerDelegate;
 import org.apache.maven.plugin.ExtensionRealmCache;
 import org.apache.maven.plugin.PluginArtifactsCache;
 import org.apache.maven.plugin.PluginRealmCache;
+import org.apache.maven.plugin.ProjectArtifactsCache;
 import org.apache.maven.plugin.internal.PluginDependenciesResolver;
 import org.apache.maven.project.ProjectRealmCache;
 import org.apache.maven.project.artifact.MavenMetadataCache;
@@ -27,6 +28,7 @@ import org.eclipse.m2e.core.internal.project.EclipseExtensionRealmCache;
 import org.eclipse.m2e.core.internal.project.EclipseMavenMetadataCache;
 import org.eclipse.m2e.core.internal.project.EclipsePluginArtifactsCache;
 import org.eclipse.m2e.core.internal.project.EclipsePluginRealmCache;
+import org.eclipse.m2e.core.internal.project.EclipseProjectArtifactsCache;
 import org.eclipse.m2e.core.internal.project.EclipseProjectRealmCache;
 import org.eclipse.m2e.core.internal.project.registry.EclipsePluginDependenciesResolver;
 
@@ -40,6 +42,7 @@ public class DefaultMavenComponentContributor implements IMavenComponentContribu
     binder.bind(PluginRealmCache.class, EclipsePluginRealmCache.class, null);
     binder.bind(PluginArtifactsCache.class, EclipsePluginArtifactsCache.class, null);
     binder.bind(PluginDependenciesResolver.class, EclipsePluginDependenciesResolver.class, null);
+    binder.bind(ProjectArtifactsCache.class, EclipseProjectArtifactsCache.class, null);
     binder.bind(BuildContext.class, EclipseBuildContext.class, null);
     binder.bind(ClassRealmManagerDelegate.class, EclipseClassRealmManagerDelegate.class,
         EclipseClassRealmManagerDelegate.ROLE_HINT);
