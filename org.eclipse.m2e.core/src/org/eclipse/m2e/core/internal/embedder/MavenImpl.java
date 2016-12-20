@@ -42,7 +42,9 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Module;
 
 import org.eclipse.aether.ConfigurationProperties;
+import org.eclipse.aether.DefaultRepositoryCache;
 import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositoryCache;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
@@ -207,6 +209,10 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   /** Last modified timestamp of cached user settings */
   private long settings_timestamp;
 
+  private Object repositoryCacheMonitor = new Object();
+
+  private RepositoryCache sharedRepositoryCache = createRepositoryCache();
+
   public MavenImpl(IMavenConfiguration mavenConfiguration) {
     this.mavenConfiguration = mavenConfiguration;
     this.lifecycleParticipants = ExtensionReader.readLifecycleParticipants();
@@ -262,6 +268,9 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     request.setCacheTransferError(true);
 
     request.setGlobalChecksumPolicy(mavenConfiguration.getGlobalChecksumPolicy());
+
+    request.setRepositoryCache(getSharedRepositoryCache());
+
     // the right way to disable snapshot update
     // request.setUpdateSnapshots(false);
     return request;
@@ -1442,4 +1451,29 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     return MavenExecutionContext.getThreadContext();
   }
 
+  /**
+   * Returns the repository cache that is shared between all Maven invocations.
+   */
+  private RepositoryCache getSharedRepositoryCache() {
+    synchronized(repositoryCacheMonitor) {
+      return sharedRepositoryCache;
+    }
+  }
+
+  /**
+   * Invalidates the shared repository cache. This needs to be done whenever the Maven models are updated to ensure that
+   * all models are created freshly.
+   */
+  public void invalidateSharedRepositoryCache() {
+    synchronized(repositoryCacheMonitor) {
+      sharedRepositoryCache = createRepositoryCache();
+    }
+  }
+
+  /**
+   * Creates a new repository cache.
+   */
+  private RepositoryCache createRepositoryCache() {
+    return new DefaultRepositoryCache();
+  }
 }
