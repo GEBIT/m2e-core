@@ -391,6 +391,8 @@ public class ProjectRegistryManager {
     Set<IFile> allProcessedPoms = new HashSet<>();
     Set<IFile> allNewFacades = new HashSet<>();
 
+    maven.invalidateSharedRepositoryCache();
+
     final Map<IFile, Set<Capability>> originalCapabilities = new HashMap<>();
     final Map<IFile, Set<RequiredCapability>> originalRequirements = new HashMap<>();
 
