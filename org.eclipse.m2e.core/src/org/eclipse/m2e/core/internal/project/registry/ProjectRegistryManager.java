@@ -360,6 +360,8 @@ public class ProjectRegistryManager {
       IProgressMonitor monitor) throws CoreException {
     Set<IFile> secondPhaseBacklog = new LinkedHashSet<IFile>();
 
+    maven.invalidateSharedRepositoryCache();
+
     final Map<IFile, Set<Capability>> originalCapabilities = new HashMap<IFile, Set<Capability>>();
     final Map<IFile, Set<RequiredCapability>> originalRequirements = new HashMap<IFile, Set<RequiredCapability>>();
 
@@ -464,6 +466,7 @@ public class ProjectRegistryManager {
         continue;
       }
 
+
       MavenProjectFacade newFacade = null;
       if(pom.isAccessible() && pom.getProject().hasNature(IMavenConstants.NATURE_ID)) {
         newFacade = newState.getProjectFacade(pom);
@@ -505,6 +508,7 @@ public class ProjectRegistryManager {
   void refreshPhase2(MutableProjectRegistry newState, DependencyResolutionContext context,
       Map<IFile, Set<Capability>> originalCapabilities, Map<IFile, Set<RequiredCapability>> originalRequirements,
       IFile pom, MavenProjectFacade newFacade, IProgressMonitor monitor) throws CoreException {
+
     Set<Capability> capabilities = null;
     Set<RequiredCapability> requirements = null;
     if(newFacade != null) {
@@ -919,6 +923,7 @@ public class ProjectRegistryManager {
    */
   void applyMutableProjectRegistry(MutableProjectRegistry newState, IProgressMonitor monitor) throws CoreException {
     // don't cache maven sessions
+
     for(MavenProjectFacade facade : newState.getProjects()) {
       MavenProject mavenProject = getMavenProject(facade);
       if(mavenProject != null) {
