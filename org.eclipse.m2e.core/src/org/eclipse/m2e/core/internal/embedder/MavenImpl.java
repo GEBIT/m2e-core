@@ -718,7 +718,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
             }
           } catch(ComponentLookupException e) {
             // this is just silly, lookupList should return an empty list!
-            log.warn("Failed to lookup lifecycle participants: " + e.getMessage());
+            log.debug("Failed to lookup lifecycle participants: " + e.getMessage());
           }
         }
       }
