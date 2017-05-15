@@ -592,15 +592,21 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     int i = 0;
     for(ICommand command : description.getBuildSpec()) {
       if(isMavenBuilderCommand(project, command)) {
-        mavenBuilder = command;
-        if(i == description.getBuildSpec().length - 1) {
-          // This is the maven builder command and it is the last one in the list - there is nothing to change
-          return false;
-        }
-      } else {
-        newSpec.add(command);
+        return false;
       }
-      i++ ;
+      newSpec.add(command);
+
+// No need to ensure that the maven build is always the last one -- this only
+// causes alternating changes in the .project file
+//        mavenBuilder = command;
+//        if(i == description.getBuildSpec().length - 1) {
+//          // This is the maven builder command and it is the last one in the list - there is nothing to change
+//          return false;
+//        }
+//      } else {
+//        newSpec.add(command);
+//      }
+//      i++ ;
     }
     if(mavenBuilder == null) {
       mavenBuilder = description.newCommand();
