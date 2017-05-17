@@ -80,6 +80,7 @@ import org.apache.maven.project.ProjectBuildingException;
 import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.project.ProjectRealmCache;
 import org.apache.maven.project.artifact.MavenMetadataCache;
+import org.apache.maven.project.artifact.ProjectArtifactsCache;
 import org.apache.maven.repository.DelegatingLocalArtifactRepository;
 
 import org.eclipse.m2e.core.embedder.ArtifactKey;
@@ -1175,6 +1176,7 @@ public class ProjectRegistryManager {
     affected.addAll(flushMavenCache(PluginRealmCache.class, pom, key, force));
     affected.addAll(flushMavenCache(MavenMetadataCache.class, pom, key, force));
     affected.addAll(flushMavenCache(PluginArtifactsCache.class, pom, key, force));
+    affected.addAll(flushMavenCache(ProjectArtifactsCache.class, pom, key, force));
     return affected;
   }
 
