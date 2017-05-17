@@ -68,6 +68,7 @@ import org.apache.maven.plugin.ExtensionRealmCache;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.PluginArtifactsCache;
 import org.apache.maven.plugin.PluginRealmCache;
+import org.apache.maven.plugin.ProjectArtifactsCache;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.project.ProjectRealmCache;
@@ -1123,6 +1124,7 @@ public class ProjectRegistryManager {
     affected.addAll(flushMavenCache(PluginRealmCache.class, pom, key, force));
     affected.addAll(flushMavenCache(MavenMetadataCache.class, pom, key, force));
     affected.addAll(flushMavenCache(PluginArtifactsCache.class, pom, key, force));
+    affected.addAll(flushMavenCache(ProjectArtifactsCache.class, pom, key, force));
     return affected;
   }
 

@@ -12,29 +12,36 @@
 package org.eclipse.m2e.core.internal.project.registry;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import org.osgi.framework.Version;
+
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.util.version.GenericVersionScheme;
 import org.eclipse.aether.version.InvalidVersionSpecificationException;
-import org.eclipse.aether.version.Version;
-import org.eclipse.aether.version.VersionConstraint;
 import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.osgi.service.resolver.VersionConstraint;
 
+import org.apache.maven.model.Model;
 import org.apache.maven.repository.LocalArtifactRepository;
 
 import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
+import org.eclipse.m2e.core.project.IMavenProjectFacade;
 import org.eclipse.m2e.core.project.IWorkspaceClassifierResolver;
 
 
@@ -58,14 +65,64 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       return null;
     }
 
-    if(context == null) { // XXX this is actually a bug 
+    if(context == null) { // XXX this is actually a bug
+      return null;
+    }
+
+    if(!classifier.isEmpty()) {
+      // cannot resolve these from the workspace
       return null;
     }
 
     // check in the workspace, note that workspace artifacts never have classifiers
     IFile pom = getWorkspaceArtifact(groupId, artifactId, baseVersion);
     if(pom == null || !pom.isAccessible()) {
-      return null;
+      VersionConstraint constraint;
+      try {
+        constraint = versionScheme.parseVersionConstraint(baseVersion);
+        IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+        IProject projectLikeArtifact = root.getProject(artifactId);
+        if(!projectLikeArtifact.isAccessible()) {
+          pom = null;
+        } else if(projectLikeArtifact.exists()) {
+          // has it a pom?
+          IFile projectPom = projectLikeArtifact.getFile("pom.xml");
+          if(projectPom.exists()) {
+            // does it match?
+            IMavenProjectFacade facade = context.state.getProjectFacade(projectPom);
+            if(facade != null) {
+              ArtifactKey artifactKey = facade.getArtifactKey();
+              if(groupId.equals(artifactKey.getGroupId()) && artifactId.equals(artifactKey.getArtifactId())
+                  && constraint.containsVersion(versionScheme.parseVersion(artifactKey.getVersion()))) {
+                pom = projectPom;
+              }
+            } else {
+              try (InputStream pomIS = projectPom.getContents()) {
+                Model model = MavenPlugin.getMaven().readModel(pomIS);
+                String pomGroupId = model.getGroupId();
+                String pomVersion = model.getVersion();
+                if(pomGroupId == null && model.getParent() != null) {
+                  pomGroupId = model.getParent().getGroupId();
+                }
+                if(pomVersion == null && model.getParent() != null) {
+                  pomVersion = model.getParent().getVersion();
+                }
+                if(groupId.equals(pomGroupId) && artifactId.equals(model.getArtifactId())
+                    && constraint.containsVersion(versionScheme.parseVersion(pomVersion))) {
+                  pom = projectPom;
+                }
+              } catch(CoreException | IOException ex) {
+                // TODO Auto-generated catch block
+              }
+            }
+          }
+        }
+      } catch(InvalidVersionSpecificationException e) {
+        // broken version range spec does not match anything
+      }
+      if(pom == null) {
+        return null;
+      }
     }
     if(context.pom != null && pom.equals(context.pom)) {
       return null;
@@ -74,7 +131,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
     if(context.resolverConfiguration.shouldResolveWorkspaceProjects()) {
       IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
       IPath file = pom.getLocation();
-      if(!"pom".equals(extension)) { //$NON-NLS-1$
+      if(!"pom".equals(extension) && !"xml".equals(extension)) { //$NON-NLS-1$
         MavenProjectFacade facade = context.state.getProjectFacade(pom);
 
         IWorkspaceClassifierResolver resolver = MavenPlugin.getWorkspaceClassifierResolverManager().getResolver();
@@ -87,9 +144,10 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
         if(location != null) {
           IResource res = root.findMember(location);
           if(res != null) {
-            file = res.getLocation();
+            return res.getLocation().toFile();
           }
         }
+        return null;
       }
 
       return file.toFile();
@@ -122,6 +180,15 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       }
     }
     if(matchingArtifacts.isEmpty()) {
+      // maybe the artifact is outdated -- if it is, return it anyway, because maybe the version had just been updated
+      for(Collection<IFile> artifacts : workspaceArtifacts.values()) {
+        for(IFile pom : artifacts) {
+          MavenProjectFacade projectFacade = context.state.getProjectFacade(pom);
+          if(projectFacade != null && projectFacade.isStale()) {
+            return pom;
+          }
+        }
+      }
       return null;
     }
     ArtifactKey matchingArtifact = matchingArtifacts.values().iterator().next();
@@ -181,7 +248,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       return versions;
     }
 
-    if(context == null) { // XXX this is actually a bug 
+    if(context == null) { // XXX this is actually a bug
       return versions;
     }
 
