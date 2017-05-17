@@ -116,6 +116,15 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       }
     }
     if(matchingArtifacts.isEmpty()) {
+      // maybe the artifact is outdated -- if it is, return it anyway, because maybe the version had just been updated
+      for(Collection<IFile> artifacts : workspaceArtifacts.values()) {
+        for(IFile pom : artifacts) {
+          MavenProjectFacade projectFacade = context.state.getProjectFacade(pom);
+          if(projectFacade != null && projectFacade.isStale()) {
+            return pom;
+          }
+        }
+      }
       return null;
     }
     ArtifactKey matchingArtifact = matchingArtifacts.values().iterator().next();
