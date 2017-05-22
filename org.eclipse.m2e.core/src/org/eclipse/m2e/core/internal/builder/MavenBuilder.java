@@ -25,11 +25,16 @@ import org.slf4j.LoggerFactory;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceDelta;
+import org.eclipse.core.resources.IResourceDeltaVisitor;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 
+import org.apache.maven.model.Dependency;
 import org.apache.maven.project.MavenProject;
 
 import org.eclipse.m2e.core.MavenPlugin;
@@ -40,6 +45,7 @@ import org.eclipse.m2e.core.internal.M2EUtils;
 import org.eclipse.m2e.core.internal.MavenPluginActivator;
 import org.eclipse.m2e.core.internal.embedder.MavenExecutionContext;
 import org.eclipse.m2e.core.internal.markers.IMavenMarkerManager;
+import org.eclipse.m2e.core.internal.project.registry.MavenProjectFacade;
 import org.eclipse.m2e.core.internal.project.registry.ProjectRegistryManager;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
 import org.eclipse.m2e.core.project.IProjectConfigurationManager;
@@ -54,8 +60,9 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
 
   final MavenBuilderImpl builder = new MavenBuilderImpl(this);
 
+  final ProjectRegistryManager projectManager = MavenPluginActivator.getDefault().getMavenProjectManagerImpl();
+
   private abstract class BuildMethod<T> {
-    final ProjectRegistryManager projectManager = MavenPluginActivator.getDefault().getMavenProjectManagerImpl();
 
     final IProjectConfigurationManager configurationManager = MavenPlugin.getProjectConfigurationManager();
 
@@ -197,10 +204,133 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     log.debug("Building project {}", getProject().getName()); //$NON-NLS-1$
     final long start = System.currentTimeMillis();
     try {
-      return methodBuild.execute(kind, args, monitor);
+      if(isBuildNeeded(kind)) {
+        return methodBuild.execute(kind, args, monitor);
+      }
+      log.debug("Not building project {} because the resource changes only occurred in its output folders",
+          getProject().getName());
+      return getProjectDependencies(getProject(), monitor);
+
     } finally {
       log.debug("Built project {} in {} ms", getProject().getName(), System.currentTimeMillis() - start); //$NON-NLS-1$
     }
+  }
+
+  /**
+   * @param kind
+   * @return
+   */
+  private boolean isBuildNeeded(int buildKind) {
+    if(buildKind == FULL_BUILD || buildKind == CLEAN_BUILD) {
+      return true;
+    }
+
+    IProject project = getProject();
+    IResourceDelta projectDelta = getDelta(project);
+    if(projectDelta == null) {
+      return true;
+    }
+    if(projectDelta.getAffectedChildren().length == 0) {
+      // from the spec of getDelta(), we should not need to build, but in practice, we need to
+      // build whenever a parent project changes, for which we do not get a delta, probably because
+      // it is a different build
+      return true;
+    }
+
+    final List<IPath> ignorableOutputPaths = getIgnorableOutputPaths(project);
+    if(ignorableOutputPaths.isEmpty()) {
+      // can't decide, so build
+      return true;
+    }
+
+    boolean isNeeded[] = new boolean[] {false};
+    // check if there is any entry in the delta that is not in the outputLocation or testOutputLocation
+    try {
+      projectDelta.accept(new IResourceDeltaVisitor() {
+        public boolean visit(IResourceDelta delta) throws CoreException {
+          IResource resource = delta.getResource();
+          if(delta.getKind() == IResourceDelta.NO_CHANGE || resource == null || resource.getType() != IResource.FILE) {
+            return true;
+          }
+          for(IPath ignorePath : ignorableOutputPaths) {
+            if(ignorePath.isPrefixOf(resource.getFullPath())) {
+              return false; // no need to check children
+            }
+            isNeeded[0] = true;
+            // no need to check any other part of the delta 
+            throw new OperationCanceledException();
+          }
+          return true;
+        }
+      });
+    } catch(OperationCanceledException ex) {
+      // ignore
+    } catch(CoreException ex) {
+      log.error(ex.getMessage(), ex);
+    }
+    return isNeeded[0];
+  }
+
+  /**
+   * Returns a list of project relative paths that, when changed, shall not trigger a build.
+   * 
+   * @param project
+   * @return
+   */
+  private List<IPath> getIgnorableOutputPaths(IProject project) {
+    IMavenProjectFacade facade = projectManager.getProject(project);
+    if(facade != null) {
+      List<IPath> ignorablePaths = new ArrayList<>(3);
+      IPath buildDir = facade.getBuildOutputPath();
+      if(buildDir != null) {
+        ignorablePaths.add(buildDir);
+      }
+      IPath outputLocation = facade.getOutputLocation();
+      if(outputLocation != null) {
+        if(buildDir == null || !buildDir.isPrefixOf(outputLocation)) {
+          ignorablePaths.add(outputLocation);
+        }
+      }
+      IPath testOutputLocation = facade.getTestOutputLocation();
+      if(testOutputLocation != null) {
+        if(buildDir == null || !buildDir.isPrefixOf(testOutputLocation)) {
+          ignorablePaths.add(testOutputLocation);
+        }
+      }
+      return ignorablePaths;
+    }
+    return Collections.emptyList();
+  }
+
+  /**
+   * Used to calculate the workspace dependencies of the given project in order to get build deltas for them next time
+   * again.
+   * 
+   * @param project
+   * @return
+   */
+  private IProject[] getProjectDependencies(IProject project, IProgressMonitor monitor) {
+    IMavenProjectFacade facade = projectManager.getProject(project);
+    if(facade != null) {
+      try {
+        MavenProject mavenProject = facade.getMavenProject(monitor);
+        List<Dependency> dependencies = mavenProject.getDependencies();
+        if(dependencies != null) {
+          List<IProject> result = new ArrayList<>(dependencies.size());
+          for(Dependency dep : dependencies) {
+            MavenProjectFacade depFacade = projectManager.getMavenProject(dep.getGroupId(), dep.getArtifactId(),
+                dep.getVersion());
+            if(depFacade != null) {
+              result.add(depFacade.getProject());
+            }
+          }
+          return result.toArray(new IProject[result.size()]);
+        }
+      } catch(CoreException ex) {
+        log.error("Unable to get maven project for {}: {}", project.getName(), ex.getMessage(), ex);
+      }
+    }
+    return null;
   }
 
   protected void clean(final IProgressMonitor monitor) throws CoreException {
