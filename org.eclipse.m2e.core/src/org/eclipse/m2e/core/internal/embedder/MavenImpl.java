@@ -30,7 +30,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 
@@ -104,6 +106,8 @@ import org.apache.maven.lifecycle.internal.DependencyContext;
 import org.apache.maven.lifecycle.internal.LifecycleExecutionPlanCalculator;
 import org.apache.maven.lifecycle.internal.MojoExecutor;
 import org.apache.maven.model.ConfigurationContainer;
+import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Exclusion;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.Profile;
@@ -620,6 +624,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
           if (hasLifecycleParticipants(project)) {
             processLifecycleParticipants(project, request, configuration.getRepositorySession());
           }
+          deduplicateArtifacts(project);
           return project;
         } catch(ProjectBuildingException ex) {
           throw new CoreException(new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, -1,
@@ -663,10 +668,12 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
         ((DefaultMavenExecutionRequest) executionRequest).setProjectBuildingConfiguration(configuration);
         processLifecycleParticipants(projectBuildingResult.getProject(), executionRequest, configuration.getRepositorySession());
       }
+      deduplicateArtifacts(result.getProject());
     } catch(ProjectBuildingException ex) {
       if(ex.getResults() != null && ex.getResults().size() == 1) {
         ProjectBuildingResult projectBuildingResult = ex.getResults().get(0);
         result.setProject(projectBuildingResult.getProject());
+        deduplicateArtifacts(result.getProject());
         result.setDependencyResolutionResult(projectBuildingResult.getDependencyResolutionResult());
       }
       result.addException(ex);
@@ -677,6 +684,64 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     }
     return result;
   }
+
+  /*package*/void deduplicateArtifacts(MavenProject project) {
+    MavenProject parent = project.getParent();
+    while(parent != null) {
+      Map<String, Artifact> parentMap = parent.getManagedVersionMap();
+      for(Map.Entry<String, Artifact> e : parentMap.entrySet()) {
+        if(project.getManagedVersionMap().containsKey(e.getKey())) {
+          Artifact artifact = project.getManagedVersionMap().get(e.getKey());
+          if(artifact.equals(e.getValue())) {
+            e.setValue(artifact);
+          }
+        }
+      }
+      if(project.getDependencyManagement().getDependencies() != null && parent.getDependencyManagement() != null
+          && parent.getDependencyManagement().getDependencies() != null) {
+        for(Dependency dep : project.getDependencyManagement().getDependencies()) {
+          for(ListIterator<Dependency> it = parent.getDependencyManagement().getDependencies().listIterator(); it
+              .hasNext();) {
+            Dependency parentDep = it.next();
+            if(Objects.equals(dep.getArtifactId(), parentDep.getArtifactId())
+                && Objects.equals(dep.getGroupId(), parentDep.getGroupId())
+                && Objects.equals(dep.getClassifier(), parentDep.getClassifier())
+                && Objects.equals(dep.getScope(), parentDep.getScope())
+                && Objects.equals(dep.getType(), parentDep.getType())
+                && Objects.equals(dep.getVersion(), parentDep.getVersion())
+                && Objects.equals(dep.isOptional(), parentDep.isOptional())
+                && equalsExclusions(dep.getExclusions(), parentDep.getExclusions())) {
+              it.set(dep);
+              break;
+            }
+          }
+        }
+      }
+      parent = parent.getParent();
+    }
+  }
+
+  private boolean equalsExclusions(List<Exclusion> first, List<Exclusion> second) {
+    if(first == null) {
+      return second == null;
+    } else if(second == null) {
+      return false;
+    }
+    if(first.size() != second.size()) {
+      return false;
+    }
+    for(int i = 0; i < first.size(); ++i) {
+      Exclusion firstExclusion = first.get(i);
+      Exclusion secondExclusion = second.get(i);
+
+      if(!Objects.equals(firstExclusion.getArtifactId(), secondExclusion.getArtifactId())
+          || !Objects.equals(firstExclusion.getGroupId(), secondExclusion.getGroupId())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /*package*/boolean hasLifecycleParticipants(MavenProject project) {
     return (project != null && !lifecycleParticipants.isEmpty());
   }
