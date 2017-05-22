@@ -697,7 +697,8 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
           }
         }
       }
-      if(project.getDependencyManagement().getDependencies() != null && parent.getDependencyManagement() != null
+      if(project.getDependencyManagement() != null && project.getDependencyManagement().getDependencies() != null
+          && parent.getDependencyManagement() != null
           && parent.getDependencyManagement().getDependencies() != null) {
         for(Dependency dep : project.getDependencyManagement().getDependencies()) {
           for(ListIterator<Dependency> it = parent.getDependencyManagement().getDependencies().listIterator(); it
