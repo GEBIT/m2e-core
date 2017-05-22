@@ -77,6 +77,12 @@ public interface IMavenProjectFacade {
   IPath getFullPath();
 
   /**
+   * Returns the full, absolute path of this project's build output directory. Typically this is the
+   * [projectname/classes], or null if the directory cannot be determined or is outside of the workspace.
+   */
+  IPath getBuildOutputPath();
+
+  /**
    * Lazy load and cache MavenProject instance
    */
   MavenProject getMavenProject(IProgressMonitor monitor) throws CoreException;
