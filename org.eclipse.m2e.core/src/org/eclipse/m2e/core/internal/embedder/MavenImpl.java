@@ -104,6 +104,8 @@ import org.apache.maven.lifecycle.internal.DependencyContext;
 import org.apache.maven.lifecycle.internal.LifecycleExecutionPlanCalculator;
 import org.apache.maven.lifecycle.internal.MojoExecutor;
 import org.apache.maven.model.ConfigurationContainer;
+import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Exclusion;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.Profile;
@@ -662,6 +664,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     }
     return result;
   }
+
   /*package*/boolean hasLifecycleParticipants(MavenProject project) {
     return (project != null && !lifecycleParticipants.isEmpty());
   }
