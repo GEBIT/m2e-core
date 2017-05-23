@@ -42,7 +42,11 @@ public class PlexusBuildAPI implements IIncrementalBuildFramework {
     @SuppressWarnings("unchecked")
     Map<String, Object> contextState = (Map<String, Object>) project.getSessionProperty(BUILD_CONTEXT_KEY);
     AbstractEclipseBuildContext buildContext;
-    if(delta != null && contextState != null && (INCREMENTAL_BUILD == kind || AUTO_BUILD == kind)) {
+    if(delta != null && (INCREMENTAL_BUILD == kind || AUTO_BUILD == kind)) {
+      if(contextState == null) {
+        contextState = new HashMap<String, Object>();
+        project.setSessionProperty(BUILD_CONTEXT_KEY, contextState);
+      }
       buildContext = new EclipseIncrementalBuildContext(delta, contextState, results);
     } else if(CLEAN_BUILD == kind) {
       project.setSessionProperty(BUILD_CONTEXT_KEY, null); // clean context state
