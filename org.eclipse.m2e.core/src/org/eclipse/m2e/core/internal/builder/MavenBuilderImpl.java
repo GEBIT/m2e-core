@@ -32,8 +32,11 @@ import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceDelta;
+import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.ICoreRunnable;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
@@ -232,37 +235,41 @@ public class MavenBuilderImpl {
 
   private void refreshResources(IProject project, Collection<File> resources, IProgressMonitor monitor)
       throws CoreException {
-    for(File file : resources) {
-      IPath path = getProjectRelativePath(project, file);
-      if(path == null) {
-        log.debug("Could not get relative path for file: ", file.getAbsoluteFile());
-        continue; // odd
-      }
+    ResourcesPlugin.getWorkspace().run(new ICoreRunnable() {
+      public void run(IProgressMonitor monitor) throws CoreException {
+        for(File file : resources) {
+          IPath path = getProjectRelativePath(project, file);
+          if(path == null) {
+            log.debug("Could not get relative path for file: ", file.getAbsoluteFile());
+            continue; // odd
+          }
 
-      IResource resource;
-      if(path.isEmpty()) {
-        resource = project;
-      } else if(!file.exists()) {
-        resource = project.findMember(path);
-      } else if(file.isDirectory()) {
-        resource = project.getFolder(path);
-      } else {
-        resource = project.getFile(path);
-      }
-      if(resource != null) {
-        resource.refreshLocal(IResource.DEPTH_INFINITE, monitor);
-        if(resource.exists()) {
-          // the resource has changed for certain, make sure resource sends IResourceChangeEvent
+          IResource resource;
+          if(path.isEmpty()) {
+            resource = project;
+          } else if(!file.exists()) {
+            resource = project.findMember(path);
+          } else if(file.isDirectory()) {
+            resource = project.getFolder(path);
+          } else {
+            resource = project.getFile(path);
+          }
+          if(resource != null) {
+            resource.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+            if(resource.exists()) {
+              // the resource has changed for certain, make sure resource sends IResourceChangeEvent
 
-          // eclipse uses file lastModified timestamp to detect resource changes
-          // this can result in missing IResourceChangeEvent's under certain conditions
-          // - two builds happen within filesystem resolution (1s on linux and osx, causes problems during unit tests)
-          // - maven mojo deliberately keeps lastModified (unlikely, but theoretically possible)
-          // @see org.eclipse.core.internal.localstore.RefreshLocalVisitor.visit(UnifiedTreeNode)
-          resource.touch(monitor);
+              // eclipse uses file lastModified timestamp to detect resource changes
+              // this can result in missing IResourceChangeEvent's under certain conditions
+              // - two builds happen within filesystem resolution (1s on linux and osx, causes problems during unit tests)
+              // - maven mojo deliberately keeps lastModified (unlikely, but theoretically possible)
+              // @see org.eclipse.core.internal.localstore.RefreshLocalVisitor.visit(UnifiedTreeNode)
+              resource.touch(monitor);
+            }
+          }
         }
       }
-    }
+    }, project, IWorkspace.AVOID_UPDATE, monitor);
   }
 
   public static IPath getProjectRelativePath(IProject project, File file) {
