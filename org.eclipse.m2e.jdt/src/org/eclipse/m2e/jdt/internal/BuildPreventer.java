@@ -25,9 +25,9 @@ import org.eclipse.jdt.core.JavaCore;
  */
 public class BuildPreventer extends IncrementalProjectBuilder {
 
-  private static final String BUILDER_ID = "org.eclipse.m2e.jdt.buildpreventer";
+  public static final String BUILDER_ID = "org.eclipse.m2e.jdt.buildpreventer";
 
-  private static final String ERROR_MARKER_ID = "org.eclipse.m2e.jdt.classpathmissing";
+  public static final String ERROR_MARKER_ID = "org.eclipse.m2e.jdt.classpathmissing";
 
   public BuildPreventer() {
   }
