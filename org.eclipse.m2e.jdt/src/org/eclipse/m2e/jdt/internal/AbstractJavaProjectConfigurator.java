@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,9 +24,11 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -134,6 +137,8 @@ public abstract class AbstractJavaProjectConfigurator extends AbstractProjectCon
 
     monitor.setTaskName(Messages.AbstractJavaProjectConfigurator_task_name + project.getName());
 
+    addBuildPreventer(project, monitor);
+
     addJavaNature(project, monitor);
 
     IJavaProject javaProject = JavaCore.create(project);
@@ -169,6 +174,41 @@ public abstract class AbstractJavaProjectConfigurator extends AbstractProjectCon
     javaProject.setRawClasspath(classpath.getEntries(), classesFolder.getFullPath(), monitor);
 
     MavenJdtPlugin.getDefault().getBuildpathManager().updateClasspath(project, monitor);
+  }
+
+  /**
+   * Adds the build preventer that prevents until a .classpath file is available
+   * 
+   * @param project
+   * @param monitor
+   * @throws CoreException
+   */
+  protected void addBuildPreventer(IProject project, IProgressMonitor monitor) throws CoreException {
+    IProjectDescription description = project.getDescription();
+
+    List<ICommand> buildSpec = new ArrayList<>(Arrays.asList(description.getBuildSpec()));
+    boolean hasJavaBuilderFirst = false;
+
+    for(Iterator<ICommand> it = buildSpec.iterator(); it.hasNext();) {
+      ICommand command = it.next();
+      if(JavaCore.BUILDER_ID.equals(command.getBuilderName())) {
+        hasJavaBuilderFirst = true;
+      }
+
+      if(BuildPreventer.BUILDER_ID.equals(command.getBuilderName())) {
+        if(!hasJavaBuilderFirst) {
+          return; // already in
+        }
+        // remove it and prepend one at the top
+        it.remove();
+      }
+    }
+
+    ICommand command = description.newCommand();
+    command.setBuilderName(BuildPreventer.BUILDER_ID);
+    buildSpec.add(0, command);
+    description.setBuildSpec(buildSpec.toArray(new ICommand[buildSpec.size()]));
+    project.setDescription(description, monitor);
   }
 
   protected IContainer getOutputLocation(ProjectConfigurationRequest request, IProject project) {
