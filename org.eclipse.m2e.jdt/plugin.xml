@@ -89,4 +89,32 @@
             name="Main Classifier Classpath Provider">
       </classifierClasspathProvider>
    </extension>
+   
+ <extension
+       id="buildpreventer"
+       point="org.eclipse.core.resources.builders">
+    <builder
+          callOnEmptyDelta="true"
+          hasNature="false"
+          isConfigurable="false">
+       <run
+             class="org.eclipse.m2e.jdt.BuildPreventer">
+       </run>
+    </builder>
+ </extension>
+ <extension
+       id="classpathmissing"
+       name=".classpath missing"
+       point="org.eclipse.core.resources.markers">
+       <super
+             type="org.eclipse.core.resources.problemmarker">
+       </super>
+       <super
+             type="org.eclipse.core.resources.textmarker">
+       </super>
+       <super
+             type="org.eclipse.jdt.core.buildpath_problem">
+       </super>
+ </extension>
+
 </plugin>
