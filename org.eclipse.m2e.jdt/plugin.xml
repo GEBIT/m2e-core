@@ -102,6 +102,7 @@
    
  <extension
        id="buildpreventer"
+       name="Unconfigured Build Preventer"
        point="org.eclipse.core.resources.builders">
     <builder
           callOnEmptyDelta="true"
