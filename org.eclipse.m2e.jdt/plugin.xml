@@ -98,7 +98,7 @@
           hasNature="false"
           isConfigurable="false">
        <run
-             class="org.eclipse.m2e.jdt.BuildPreventer">
+             class="org.eclipse.m2e.jdt.internal.BuildPreventer">
        </run>
     </builder>
  </extension>
