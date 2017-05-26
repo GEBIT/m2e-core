@@ -41,6 +41,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
           && !hasClasspathFile(tempProject)) {
 
         preventBuild(tempProject, aMonitor);
+        forgetLastBuiltState();
         return null;
       }
       removeMarker(tempProject);
