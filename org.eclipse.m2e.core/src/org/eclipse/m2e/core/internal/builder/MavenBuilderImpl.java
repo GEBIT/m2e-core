@@ -33,10 +33,10 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceDelta;
 import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.ICoreRunnable;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
@@ -235,7 +235,7 @@ public class MavenBuilderImpl {
 
   private void refreshResources(IProject project, Collection<File> resources, IProgressMonitor monitor)
       throws CoreException {
-    ResourcesPlugin.getWorkspace().run(new ICoreRunnable() {
+    ResourcesPlugin.getWorkspace().run(new IWorkspaceRunnable() {
       public void run(IProgressMonitor monitor) throws CoreException {
         for(File file : resources) {
           IPath path = getProjectRelativePath(project, file);
