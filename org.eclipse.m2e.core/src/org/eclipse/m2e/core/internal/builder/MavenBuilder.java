@@ -249,9 +249,23 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
       projectDelta.accept(new IResourceDeltaVisitor() {
         public boolean visit(IResourceDelta delta) throws CoreException {
           IResource resource = delta.getResource();
-          if(delta.getKind() == IResourceDelta.NO_CHANGE || resource == null || resource.getType() != IResource.FILE) {
+          if(resource == null) {
             return true;
           }
+
+          switch(resource.getType()) {
+            case IResource.PROJECT: {
+              if(delta.getFlags() == IResourceDelta.DESCRIPTION) {
+                isNeeded[0] = true;
+                return false; // no need to check children
+              }
+              break;
+            }
+          }
+          if(delta.getKind() == IResourceDelta.NO_CHANGE || resource.getType() != IResource.FILE) {
+            return true;
+          }
+
           for(IPath ignorePath : ignorableOutputPaths) {
             if(ignorePath.isPrefixOf(resource.getFullPath())) {
               return false; // no need to check children
