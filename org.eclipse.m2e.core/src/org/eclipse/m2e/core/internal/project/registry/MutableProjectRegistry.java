@@ -22,6 +22,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
 
@@ -36,6 +39,8 @@ import org.eclipse.m2e.core.embedder.ArtifactKey;
 public class MutableProjectRegistry extends BasicProjectRegistry implements IProjectRegistry {
 
   private static final long serialVersionUID = 4879169945594340946L;
+
+  private static final Logger log = LoggerFactory.getLogger(MutableProjectRegistry.class);
 
   private final ProjectRegistry parent;
 
@@ -67,6 +72,17 @@ public class MutableProjectRegistry extends BasicProjectRegistry implements IPro
       }
     }
     if(facade != null) {
+      // sanity check
+      if(facade.getMavenProject() != null) {
+        if(!facade.getArtifactKey().getArtifactId().equals(facade.getMavenProject().getArtifactId())
+            || !facade.getArtifactKey().getGroupId().equals(facade.getMavenProject().getGroupId())) {
+          log.warn("Somthing fishy here: MavenProject:" + facade.getMavenProject().getGroupId() + ":"
+              + facade.getMavenProject().getArtifactId() + " does not match ArtifactKey "
+              + facade.getArtifactKey().getGroupId() + ":" + facade.getArtifactKey().getArtifactId()
+              + ". Will not add project to state.");
+          return;
+        }
+      }
       // Add the project to workspaceProjects map
       workspacePoms.put(pom, facade);
 
