@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -123,7 +124,20 @@ abstract class BasicProjectRegistry implements Serializable {
     if(paths == null || paths.isEmpty()) {
       return null;
     }
-    return workspacePoms.get(paths.iterator().next());
+    for(Iterator<IFile> it = paths.iterator(); it.hasNext();) {
+      IFile pomPath = it.next();
+      MavenProjectFacade result = workspacePoms.get(pomPath);
+      // sanity check
+      if(result != null) {
+        if(result.getArtifactKey().getArtifactId().equals(artifactId)
+            && result.getArtifactKey().getGroupId().equals(groupId)) {
+          return result;
+        }
+        // this entry is WRONG! Remove it and try the next one
+        it.remove();
+      }
+    }
+    return null;
   }
 
   /**
@@ -168,6 +182,15 @@ abstract class BasicProjectRegistry implements Serializable {
     for(MavenProjectFacade facade : workspacePoms.values()) {
       if(facade == null || facade.getPom() == null || facade.getPom().getLocation() == null) {
         return false;
+      }
+      Set<IFile> pomFiles = workspaceArtifacts.get(facade.getArtifactKey());
+      if(pomFiles != null) {
+        for(IFile pomFile : pomFiles) {
+          MavenProjectFacade projectFacade = workspacePoms.get(pomFile);
+          if(projectFacade != null && projectFacade != facade) {
+            return false;
+          }
+        }
       }
     }
     return true;
