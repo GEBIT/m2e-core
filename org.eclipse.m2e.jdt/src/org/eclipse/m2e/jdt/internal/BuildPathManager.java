@@ -44,10 +44,13 @@ import org.slf4j.LoggerFactory;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.IResourceChangeListener;
 import org.eclipse.core.resources.IResourceDelta;
 import org.eclipse.core.resources.IResourceDeltaVisitor;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.resources.WorkspaceJob;
 import org.eclipse.core.runtime.CoreException;
@@ -58,6 +61,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.SubMonitor;
+import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathContainer;
@@ -261,10 +265,68 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
         IClasspathContainer container = new MavenClasspathContainer(path, classpath);
         JavaCore.setClasspathContainer(container.getPath(), new IJavaProject[] {javaProject},
             new IClasspathContainer[] {container}, monitor);
+        fixDynamicProjectReferences(javaProject, monitor);
+
         saveContainerState(project, container);
       } catch(CoreException ex) {
         log.error(ex.getMessage(), ex);
       }
+    }
+  }
+
+  /**
+   * JDT keeps old dynamic project references alive which sometimes cause build errors. This method removes those
+   * references, if necessary.
+   * 
+   * @param javaProject
+   * @param monitor
+   */
+  private void fixDynamicProjectReferences(IJavaProject javaProject, IProgressMonitor monitor) {
+    if(!javaProject.exists()) {
+      return;
+    }
+
+    try {
+      IProject project = javaProject.getProject();
+      IProjectDescription description = project.getDescription();
+      IProject[] dynamicReferences = description.getDynamicReferences();
+      if(dynamicReferences.length == 0) {
+        return; // nothing to do
+      }
+      IClasspathEntry[] resolvedClasspath = javaProject.getResolvedClasspath(true);
+      Set<String> projectEntries = new HashSet<>();
+      for(IClasspathEntry entry : resolvedClasspath) {
+        if(entry.getEntryKind() == IClasspathEntry.CPE_PROJECT) {
+          projectEntries.add(entry.getPath().lastSegment());
+        }
+      }
+
+      boolean updateReferences = false;
+      List<IProject> newReferences = new ArrayList<>(dynamicReferences.length);
+      for(IProject dynamicReference : dynamicReferences) {
+        if(projectEntries.contains(dynamicReference.getName())) {
+          newReferences.add(dynamicReference);
+        } else {
+          updateReferences = true;
+          log.warn("About to remove dangling dynamic project reference ''{}'' from project ''{}''",
+              dynamicReference.getName(), project.getName());
+        }
+      }
+
+      if(updateReferences) {
+        log.warn("Now fixing the dynamic project references for project " + project.getName());
+        ISchedulingRule schedulingRule = ResourcesPlugin.getWorkspace().getRuleFactory().modifyRule(project);
+        ResourcesPlugin.getWorkspace().run(new IWorkspaceRunnable() {
+
+          public void run(IProgressMonitor monitor) throws CoreException {
+            description.setDynamicReferences(newReferences.toArray(new IProject[newReferences.size()]));
+            project.setDescription(description, monitor);
+          }
+        }, schedulingRule, IWorkspace.AVOID_UPDATE, monitor);
+      }
+
+    } catch(CoreException ex) {
+      log.error("Error trying to fix up dynamic project references for project " + javaProject.getElementName(), ex);
     }
   }
 
