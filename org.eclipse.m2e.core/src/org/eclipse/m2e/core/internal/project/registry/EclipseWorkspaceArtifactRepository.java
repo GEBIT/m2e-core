@@ -27,13 +27,17 @@ import org.eclipse.aether.version.Version;
 import org.eclipse.aether.version.VersionConstraint;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IPath;
 
 import org.apache.maven.repository.LocalArtifactRepository;
 
+import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
+import org.eclipse.m2e.core.project.IMavenProjectFacade;
+import org.eclipse.m2e.core.project.IMavenProjectRegistry;
 
 
 public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepository implements WorkspaceReader {
@@ -63,6 +67,27 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
     // check in the workspace, note that workspace artifacts never have classifiers
     IFile pom = getWorkspaceArtifact(groupId, artifactId, baseVersion);
     if(pom == null || !pom.isAccessible()) {
+      IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+      IProject projectLikeArtifact = root.getProject(artifactId);
+      if (projectLikeArtifact.exists()) {
+        // has it a pom?
+        IFile projectPom = projectLikeArtifact.getFile("pom.xml");
+        if (projectPom.exists()) {
+          // does it match?
+          IMavenProjectFacade facade = context.state.getProjectFacade(projectPom);
+          if(facade == null) {
+            IMavenProjectRegistry projectManager = MavenPlugin.getMavenProjectRegistry();
+            facade = projectManager.create(projectPom, true, null);
+          }
+          if(facade != null) {
+            ArtifactKey artifactKey = facade.getArtifactKey();
+            if(groupId.equals(artifactKey.getGroupId()) && artifactId.equals(artifactKey.getArtifactId())) {
+              IPath file = projectPom.getLocation();
+              return file.toFile();
+            }
+          }
+        }
+      }
       return null;
     }
     if(context.pom != null && pom.equals(context.pom)) {
