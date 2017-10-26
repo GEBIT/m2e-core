@@ -11,7 +11,9 @@
 
 package org.eclipse.m2e.core.internal.builder;
 
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -35,7 +37,12 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.core.runtime.OperationCanceledException;
 
+import org.codehaus.plexus.util.MatchPatterns;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
+
 import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginManagement;
 import org.apache.maven.project.MavenProject;
 
 import org.eclipse.m2e.core.MavenPlugin;
@@ -45,6 +52,7 @@ import org.eclipse.m2e.core.internal.IMavenConstants;
 import org.eclipse.m2e.core.internal.M2EUtils;
 import org.eclipse.m2e.core.internal.MavenPluginActivator;
 import org.eclipse.m2e.core.internal.embedder.MavenExecutionContext;
+import org.eclipse.m2e.core.internal.lifecyclemapping.LifecycleMappingFactory;
 import org.eclipse.m2e.core.internal.markers.IMavenMarkerManager;
 import org.eclipse.m2e.core.internal.project.registry.MavenProjectFacade;
 import org.eclipse.m2e.core.internal.project.registry.ProjectRegistryManager;
@@ -59,10 +67,17 @@ import org.eclipse.m2e.core.project.configurator.MojoExecutionKey;
 public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProvider {
   static final Logger log = LoggerFactory.getLogger(MavenBuilder.class);
 
+  private static final String PROJ_PROP_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
+
+  private static final String ELEMENT_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
+
+  private static final String ELEMENT_IGNORE = "ignore"; //$NON-NLS-1$
+
   final MavenBuilderImpl builder = new MavenBuilderImpl(this);
 
+  final ProjectRegistryManager projectManager = MavenPluginActivator.getDefault().getMavenProjectManagerImpl();
+
   private abstract class BuildMethod<T> {
-    final ProjectRegistryManager projectManager = MavenPluginActivator.getDefault().getMavenProjectManagerImpl();
 
     final IProjectConfigurationManager configurationManager = MavenPlugin.getProjectConfigurationManager();
 
@@ -204,10 +219,10 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     log.debug("Building project {}", getProject().getName()); //$NON-NLS-1$
     final long start = System.currentTimeMillis();
     try {
-      if(isBuildNeeded(kind)) {
+      if(isBuildNeeded(kind, monitor)) {
         return methodBuild.execute(kind, args, monitor);
       }
-      log.debug("Not building project {} because the resource changes only occurred in its output folders",
+      log.debug("Not building project {} because the resource changes only occurred in its output or ignored folders",
           getProject().getName());
       return getProjectDependencies(getProject(), monitor);
     } finally {
@@ -219,7 +234,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
    * @param kind
    * @return
    */
-  private boolean isBuildNeeded(int buildKind) {
+  private boolean isBuildNeeded(int buildKind, IProgressMonitor monitor) throws CoreException {
     if(buildKind == FULL_BUILD || buildKind == CLEAN_BUILD) {
       return true;
     }
@@ -253,10 +268,14 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     }
 
     final List<IPath> ignorableOutputPaths = getIgnorableOutputPaths(project);
-    if(ignorableOutputPaths.isEmpty()) {
+    String[] ignorePathes = getProjectIgnoredPathes(project, monitor);
+    if(ignorableOutputPaths.isEmpty() && ignorePathes.length == 0) {
       // can't decide, so build
       return true;
     }
+
+    final List<IPath> fourceBuildPaths = getCompileSourcePaths(project);
+    final MatchPatterns ignorePatterns = MatchPatterns.from(ignorePathes);
 
     boolean isNeeded[] = new boolean[] {false};
     // check if there is any entry in the delta that is not in the outputLocation or testOutputLocation
@@ -277,19 +296,30 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
               break;
             }
           }
-          if(delta.getKind() == IResourceDelta.NO_CHANGE || resource.getType() != IResource.FILE) {
+          if(delta.getKind() == IResourceDelta.NO_CHANGE) {
             return true;
           }
-
+          for(IPath forceBuildPath : fourceBuildPaths) {
+            if(forceBuildPath.isPrefixOf(resource.getFullPath())) {
+              isNeeded[0] = true;
+              return false; // no need to check children
+            }
+          }
           for(IPath ignorePath : ignorableOutputPaths) {
             if(ignorePath.isPrefixOf(resource.getFullPath())) {
               return false; // no need to check children
             }
-            isNeeded[0] = true;
-            // no need to check any other part of the delta 
-            throw new OperationCanceledException();
           }
-          return true;
+          String projectRelativePath = resource.getProjectRelativePath().toOSString();
+          if(ignorePatterns.matches(projectRelativePath, false)) {
+            return false; // no need to check children
+          }
+          if(resource.getType() != IResource.FILE) {
+            return true;
+          }
+          isNeeded[0] = true;
+          // no need to check any other part of the delta 
+          throw new OperationCanceledException();
         }
       });
     } catch(OperationCanceledException ex) {
@@ -298,6 +328,72 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
       log.error(ex.getMessage(), ex);
     }
     return isNeeded[0];
+  }
+
+  private String[] getProjectIgnoredPathes(IProject project, IProgressMonitor monitor) throws CoreException {
+    // TODO this does not merge configuration from profiles 
+    IMavenProjectFacade facade = projectManager.getProject(project);
+    if(facade != null) {
+      MavenProject mavenProject = facade.getMavenProject(monitor);
+      if(mavenProject != null) {
+        String[] result = null;
+        PluginManagement pluginManagement = mavenProject.getPluginManagement();
+        Plugin metadataPlugin = pluginManagement.getPluginsAsMap()
+            .get(LifecycleMappingFactory.LIFECYCLE_MAPPING_PLUGIN_GROUPID + ":" //$NON-NLS-1$
+                + LifecycleMappingFactory.LIFECYCLE_MAPPING_PLUGIN_ARTIFACTID);
+        if(metadataPlugin != null) {
+          Xpp3Dom configurationDom = (Xpp3Dom) metadataPlugin.getConfiguration();
+          if(configurationDom != null) {
+            Xpp3Dom ignoresDom = configurationDom.getChild(ELEMENT_IGNORED_PATHES);
+            if(ignoresDom != null) {
+              Xpp3Dom[] ignores = ignoresDom.getChildren(ELEMENT_IGNORE);
+              if(ignores != null && ignores.length > 0) {
+                result = new String[ignores.length];
+                for(int i = 0; i < ignores.length; ++i) {
+                  result[i] = ignores[i].getValue().trim();
+                }
+              } else if(!ignoresDom.getValue().isEmpty()) {
+                String[] ignoresValues = ignoresDom.getValue().split(",");
+                result = new String[ignoresValues.length];
+                for(int i = 0; i < ignoresValues.length; ++i) {
+                  result[i] = ignoresValues[i].trim();
+                }
+              }
+              if(result != null) {
+                // normalize separators
+                for(int i = 0; i < result.length; ++i) {
+                  result[i] = result[i].replace(File.separatorChar == '/' ? '\\' : '/', File.separatorChar);
+                  if(result[i].endsWith(File.separator)) {
+                    result[i] += "**";
+                  }
+                }
+                return result;
+              }
+            }
+          }
+        }
+      }
+    }
+    return new String[0];
+  }
+
+  /**
+   * Returns a list of project relative paths that, when changed, shall trigger a build.
+   * 
+   * @param project
+   * @return
+   */
+  private List<IPath> getCompileSourcePaths(IProject project) {
+    IMavenProjectFacade facade = projectManager.getProject(project);
+    if(facade != null) {
+      List<IPath> compileSourcePaths = new ArrayList<>(3);
+      IPath[] sourceDirs = facade.getCompileSourceLocations();
+      if(sourceDirs != null) {
+        compileSourcePaths.addAll(Arrays.asList(sourceDirs));
+      }
+      return compileSourcePaths;
+    }
+    return Collections.emptyList();
   }
 
   /**
