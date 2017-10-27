@@ -12,6 +12,8 @@
 package org.eclipse.m2e.core.internal.project.registry;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -31,15 +33,16 @@ import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 
+import org.apache.maven.model.Model;
 import org.apache.maven.repository.LocalArtifactRepository;
 
 import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
 import org.eclipse.m2e.core.project.IWorkspaceClassifierResolver;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
-import org.eclipse.m2e.core.project.IMavenProjectRegistry;
 
 
 public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepository implements WorkspaceReader {
@@ -69,28 +72,50 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
     // check in the workspace, note that workspace artifacts never have classifiers
     IFile pom = getWorkspaceArtifact(groupId, artifactId, baseVersion);
     if(pom == null || !pom.isAccessible()) {
-      IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
-      IProject projectLikeArtifact = root.getProject(artifactId);
-      if (projectLikeArtifact.exists()) {
-        // has it a pom?
-        IFile projectPom = projectLikeArtifact.getFile("pom.xml");
-        if (projectPom.exists()) {
-          // does it match?
-          IMavenProjectFacade facade = context.state.getProjectFacade(projectPom);
-          if(facade == null) {
-            IMavenProjectRegistry projectManager = MavenPlugin.getMavenProjectRegistry();
-            facade = projectManager.create(projectPom, true, null);
-          }
-          if(facade != null) {
-            ArtifactKey artifactKey = facade.getArtifactKey();
-            if(groupId.equals(artifactKey.getGroupId()) && artifactId.equals(artifactKey.getArtifactId())) {
-              IPath file = projectPom.getLocation();
-              return file.toFile();
+      VersionConstraint constraint;
+      try {
+        constraint = versionScheme.parseVersionConstraint(baseVersion);
+        IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+        IProject projectLikeArtifact = root.getProject(artifactId);
+        if(projectLikeArtifact.exists()) {
+          // has it a pom?
+          IFile projectPom = projectLikeArtifact.getFile("pom.xml");
+          if(projectPom.exists()) {
+            // does it match?
+            IMavenProjectFacade facade = context.state.getProjectFacade(projectPom);
+            if(facade != null) {
+              ArtifactKey artifactKey = facade.getArtifactKey();
+              if(groupId.equals(artifactKey.getGroupId()) && artifactId.equals(artifactKey.getArtifactId())
+                  && constraint.containsVersion(versionScheme.parseVersion(artifactKey.getVersion()))) {
+                pom = projectPom;
+              }
+            } else {
+              try (InputStream pomIS = projectPom.getContents()) {
+                Model model = MavenPlugin.getMaven().readModel(pomIS);
+                String pomGroupId = model.getGroupId();
+                String pomVersion = model.getVersion();
+                if(pomGroupId == null && model.getParent() != null) {
+                  pomGroupId = model.getParent().getGroupId();
+                }
+                if(pomVersion == null && model.getParent() != null) {
+                  pomVersion = model.getParent().getVersion();
+                }
+                if(groupId.equals(pomGroupId) && artifactId.equals(model.getArtifactId())
+                    && constraint.containsVersion(versionScheme.parseVersion(pomVersion))) {
+                  pom = projectPom;
+                }
+              } catch(CoreException | IOException ex) {
+                // TODO Auto-generated catch block
+              }
             }
           }
         }
+      } catch(InvalidVersionSpecificationException e) {
+        // broken version range spec does not match anything
       }
-      return null;
+      if(pom == null) {
+        return null;
+      }
     }
     if(context.pom != null && pom.equals(context.pom)) {
       return null;
@@ -99,7 +124,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
     if(context.resolverConfiguration.shouldResolveWorkspaceProjects()) {
       IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
       IPath file = pom.getLocation();
-      if(!"pom".equals(extension)) { //$NON-NLS-1$
+      if(!"pom".equals(extension) && !"xml".equals(extension)) { //$NON-NLS-1$
         MavenProjectFacade facade = context.state.getProjectFacade(pom);
 
         IWorkspaceClassifierResolver resolver = MavenPlugin.getWorkspaceClassifierResolverManager().getResolver();
@@ -115,6 +140,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
             file = res.getLocation();
           }
         }
+        return null;
       }
 
       return file.toFile();
