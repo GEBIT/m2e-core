@@ -20,29 +20,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import org.osgi.framework.Version;
+
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.util.version.GenericVersionScheme;
 import org.eclipse.aether.version.InvalidVersionSpecificationException;
-import org.eclipse.aether.version.Version;
-import org.eclipse.aether.version.VersionConstraint;
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.osgi.service.resolver.VersionConstraint;
 
 import org.apache.maven.model.Model;
 import org.apache.maven.repository.LocalArtifactRepository;
 
 import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
-import org.eclipse.m2e.core.project.IWorkspaceClassifierResolver;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
+import org.eclipse.m2e.core.project.IWorkspaceClassifierResolver;
 
 
 public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepository implements WorkspaceReader {
@@ -65,7 +65,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       return null;
     }
 
-    if(context == null) { // XXX this is actually a bug 
+    if(context == null) { // XXX this is actually a bug
       return null;
     }
 
@@ -137,7 +137,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
         if(location != null) {
           IResource res = root.findMember(location);
           if(res != null) {
-            file = res.getLocation();
+            return res.getLocation().toFile();
           }
         }
         return null;
@@ -241,7 +241,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       return versions;
     }
 
-    if(context == null) { // XXX this is actually a bug 
+    if(context == null) { // XXX this is actually a bug
       return versions;
     }
 
