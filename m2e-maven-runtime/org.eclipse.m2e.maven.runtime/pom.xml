@@ -32,7 +32,7 @@
     <!-- below are m2e-specific addons -->
     <plexus-build-api.version>0.0.7</plexus-build-api.version>
     <okhttp-connector.version>0.17.3</okhttp-connector.version>
-    <concurrent-localrepo.version>0.11.2</concurrent-localrepo.version>
+    <concurrent-localrepo.version>0.11.2-gebit1</concurrent-localrepo.version>
   </properties>
 
   <dependencies>
