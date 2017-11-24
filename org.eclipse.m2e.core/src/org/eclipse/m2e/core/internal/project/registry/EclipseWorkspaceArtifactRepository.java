@@ -130,9 +130,7 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
         MavenProjectFacade facade = context.state.getProjectFacade(pom);
         if(facade != null && facade.getOutputLocation() != null) {
           IFolder outputLocation = root.getFolder(facade.getOutputLocation());
-          if(outputLocation.exists()) {
-            return outputLocation.getLocation().toFile();
-          }
+          return outputLocation.getLocation().toFile();
         }
         return null;
       }
