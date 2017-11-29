@@ -13,6 +13,7 @@ package org.eclipse.m2e.core.internal.builder;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -257,6 +258,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
       return true;
     }
 
+    final List<IPath> fourceBuildPaths = getCompileSourcePaths(project);
     final MatchPatterns ignorePatterns = MatchPatterns.from(ignorePathes);
 
     boolean isNeeded[] = new boolean[] {false};
@@ -281,7 +283,12 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
           if(delta.getKind() == IResourceDelta.NO_CHANGE) {
             return true;
           }
-
+          for(IPath forceBuildPath : fourceBuildPaths) {
+            if(forceBuildPath.isPrefixOf(resource.getFullPath())) {
+              isNeeded[0] = true;
+              return false; // no need to check children
+            }
+          }
           for(IPath ignorePath : ignorableOutputPaths) {
             if(ignorePath.isPrefixOf(resource.getFullPath())) {
               return false; // no need to check children
@@ -352,6 +359,25 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
       }
     }
     return new String[0];
+  }
+
+  /**
+   * Returns a list of project relative paths that, when changed, shall trigger a build.
+   * 
+   * @param project
+   * @return
+   */
+  private List<IPath> getCompileSourcePaths(IProject project) {
+    IMavenProjectFacade facade = projectManager.getProject(project);
+    if(facade != null) {
+      List<IPath> compileSourcePaths = new ArrayList<>(3);
+      IPath[] sourceDirs = facade.getCompileSourceLocations();
+      if(sourceDirs != null) {
+        compileSourcePaths.addAll(Arrays.asList(sourceDirs));
+      }
+      return compileSourcePaths;
+    }
+    return Collections.emptyList();
   }
 
   /**
