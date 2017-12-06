@@ -69,7 +69,7 @@ public class M2EUtils {
       folder.create(true, true, null);
     }
 
-    if(folder.isAccessible() && derived) {
+    if(folder.isAccessible() && derived != folder.isDerived(IResource.CHECK_ANCESTORS)) {
       folder.setDerived(true, monitor);
     }
   }
