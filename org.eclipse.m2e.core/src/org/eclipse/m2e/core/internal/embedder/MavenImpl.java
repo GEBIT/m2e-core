@@ -693,29 +693,27 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
         if(project.getManagedVersionMap().containsKey(e.getKey())) {
           Artifact artifact = project.getManagedVersionMap().get(e.getKey());
           if(artifact.equals(e.getValue())) {
+            // same artifact, use same instance in parent as in project
             e.setValue(artifact);
           }
         }
       }
       if(project.getDependencyManagement() != null  
-          && project.getDependencyManagement().getDependencies() != null 
           && parent.getDependencyManagement() != null
+          && project.getDependencyManagement().getDependencies() != null 
           && parent.getDependencyManagement().getDependencies() != null) {
+        // build a map of project dependencyManagement
+        Map<String, Dependency> projectDependencyMap = new HashMap<>(
+            project.getDependencyManagement().getDependencies().size());
         for(Dependency dep : project.getDependencyManagement().getDependencies()) {
-          for(ListIterator<Dependency> it = parent.getDependencyManagement().getDependencies().listIterator(); it
-              .hasNext();) {
-            Dependency parentDep = it.next();
-            if(Objects.equals(dep.getArtifactId(), parentDep.getArtifactId())
-                && Objects.equals(dep.getGroupId(), parentDep.getGroupId())
-                && Objects.equals(dep.getClassifier(), parentDep.getClassifier())
-                && Objects.equals(dep.getScope(), parentDep.getScope())
-                && Objects.equals(dep.getType(), parentDep.getType())
-                && Objects.equals(dep.getVersion(), parentDep.getVersion())
-                && Objects.equals(dep.isOptional(), parentDep.isOptional())
-                && equalsExclusions(dep.getExclusions(), parentDep.getExclusions())) {
-              it.set(dep);
-              break;
-            }
+          projectDependencyMap.put(dep.getManagementKey(), dep);
+        }
+        for(ListIterator<Dependency> it = parent.getDependencyManagement().getDependencies().listIterator(); it
+            .hasNext();) {
+          Dependency parentDep = it.next();
+          Dependency projectDep = projectDependencyMap.get(parentDep.getManagementKey());
+          if (projectDep != null && equalsExclusions(parentDep.getExclusions(), projectDep.getExclusions())) {
+            it.set(projectDep);
           }
         }
       }
