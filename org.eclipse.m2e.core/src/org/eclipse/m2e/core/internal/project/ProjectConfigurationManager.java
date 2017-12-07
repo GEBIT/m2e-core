@@ -111,6 +111,14 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     IResourceChangeListener {
   /*package*/static final Logger log = LoggerFactory.getLogger(ProjectConfigurationManager.class);
 
+  private static final int WORK_REFRESH_LOCAL = 1;
+
+  private static final int WORK_REFRESH = 6;
+
+  private static final int WORK_UPDATE_CONFIGURATION = 2;
+
+  private static final int WORK_CLEAN_PROJECTS = 1;
+
   final ProjectRegistryManager projectManager;
 
   final MavenModelManager mavenModelManager;
@@ -368,8 +376,9 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
   /*package*/Map<String, IStatus> updateProjectConfiguration0(Collection<IFile> pomFiles, boolean updateConfiguration,
       boolean cleanProjects, boolean refreshFromLocal, IProgressMonitor monitor) {
 
-    monitor.beginTask(Messages.ProjectConfigurationManager_task_updating_projects, pomFiles.size()
-        * (1 + (updateConfiguration ? 1 : 0) + (cleanProjects ? 1 : 0) + (refreshFromLocal ? 1 : 0)));
+    final SubMonitor progress = SubMonitor.convert(monitor, Messages.ProjectConfigurationManager_task_updating_projects,
+        (refreshFromLocal ? WORK_REFRESH_LOCAL : 0) + WORK_REFRESH
+            + (updateConfiguration ? WORK_UPDATE_CONFIGURATION : 0) + (cleanProjects ? WORK_CLEAN_PROJECTS : 0));
 
     long l1 = System.currentTimeMillis();
     log.info("Update started"); //$NON-NLS-1$
@@ -383,14 +392,16 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     // refresh from local filesystem
     if(refreshFromLocal) {
+      SubMonitor submonitorRefreshLocal = progress.newChild(WORK_REFRESH_LOCAL);
+      submonitorRefreshLocal.setWorkRemaining(pomFiles.size());
       for(IFile pom : pomFiles) {
-        if(monitor.isCanceled()) {
+        if(submonitorRefreshLocal.isCanceled()) {
           throw new OperationCanceledException();
         }
 
         IProject project = pom.getProject();
         try {
-          project.refreshLocal(IResource.DEPTH_INFINITE, new SubProgressMonitor(monitor, 1,
+          project.refreshLocal(IResource.DEPTH_INFINITE, submonitorRefreshLocal.newChild(1,
               SubProgressMonitor.SUPPRESS_SUBTASK_LABEL));
           pomsToRefresh.add(pom);
         } catch(CoreException ex) {
@@ -422,7 +433,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     // this will ensure that project registry is up-to-date on GAV of all projects being updated
     // TODO this sends multiple update events, rework using low-level registry update methods
     try {
-      projectManager.refresh(pomsToRefresh, new SubProgressMonitor(monitor, pomFiles.size()));
+      projectManager.refresh(pomsToRefresh, progress.newChild(WORK_REFRESH));
 
       for(IFile pom : pomsToRefresh) {
         IProject project = pom.getProject();
@@ -443,20 +454,23 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     // update project configuration
     if(updateConfiguration) {
       Iterator<Entry<IFile, IMavenProjectFacade>> iterator = projects.entrySet().iterator();
+
+      SubMonitor submonitorUpdateConfiguration = progress.newChild(WORK_UPDATE_CONFIGURATION);
+      submonitorUpdateConfiguration.setWorkRemaining(2 * projects.size());
+
       while(iterator.hasNext()) {
-        if(monitor.isCanceled()) {
+        if(submonitorUpdateConfiguration.isCanceled()) {
           throw new OperationCanceledException();
         }
 
         IMavenProjectFacade facade = iterator.next().getValue();
 
-        monitor.subTask(facade.getProject().getName());
+        submonitorUpdateConfiguration.subTask(facade.getProject().getName());
 
-        SubProgressMonitor submonitor = new SubProgressMonitor(monitor, 1, SubProgressMonitor.SUPPRESS_SUBTASK_LABEL);
         try {
           ProjectConfigurationRequest cfgRequest = new ProjectConfigurationRequest(facade,
-              facade.getMavenProject(submonitor));
-          updateProjectConfiguration(cfgRequest, submonitor);
+              facade.getMavenProject(submonitorUpdateConfiguration.newChild(1)));
+          updateProjectConfiguration(cfgRequest, submonitorUpdateConfiguration.newChild(1));
         } catch(CoreException ex) {
           iterator.remove();
           updateStatus.put(facade.getProject().getName(), ex.getStatus());
@@ -466,9 +480,12 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     // rebuild
     if(cleanProjects) {
+      SubMonitor submonitorCleanBuild = progress.newChild(WORK_CLEAN_PROJECTS);
+      submonitorCleanBuild.setWorkRemaining(projects.size());
+
       Iterator<Entry<IFile, IMavenProjectFacade>> iterator = projects.entrySet().iterator();
       while(iterator.hasNext()) {
-        if(monitor.isCanceled()) {
+        if(submonitorCleanBuild.isCanceled()) {
           throw new OperationCanceledException();
         }
 
@@ -476,14 +493,13 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
         IProject project = facade.getProject();
 
-        monitor.subTask(project.getName());
+        submonitorCleanBuild.subTask(project.getName());
 
-        SubProgressMonitor submonitor = new SubProgressMonitor(monitor, 1, SubProgressMonitor.SUPPRESS_SUBTASK_LABEL);
         try {
           // only rebuild projects that were successfully updated
           IStatus status = updateStatus.get(project.getName());
           if(status == null || status.isOK()) {
-            project.build(IncrementalProjectBuilder.CLEAN_BUILD, submonitor);
+            project.build(IncrementalProjectBuilder.CLEAN_BUILD, submonitorCleanBuild.newChild(1));
             // TODO provide an option to build projects if the workspace is not autobuilding
           }
         } catch(CoreException ex) {
