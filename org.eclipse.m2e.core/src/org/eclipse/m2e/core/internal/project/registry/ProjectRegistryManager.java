@@ -1013,6 +1013,12 @@ public class ProjectRegistryManager {
       try {
         mavenProject = mavenProjectCache.get(facade, new Callable<MavenProject>() {
           public MavenProject call() throws Exception {
+            // look in context cache first to avoid project building
+            for(Map.Entry<MavenProjectFacade, MavenProject> entry : getContextProjects().entrySet()) {
+              if(entry.getKey().getArtifactKey().equals(facade.getArtifactKey())) {
+                return entry.getValue();
+              }
+            }
             return readProjectWithDependencies(facade.getPom(), facade.getResolverConfiguration(), monitor);
           }
         });
@@ -1092,6 +1098,8 @@ public class ProjectRegistryManager {
       }
     };
     return CacheBuilder.newBuilder().maximumSize(Long.getLong("m2e.projectCacheSize", 5))
+        .softValues() // free ManveProjects if memory needed
+        .weakKeys() // don't pin MavenProjectFacades
         .removalListener(removalListener).build();
   }
 

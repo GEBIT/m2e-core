@@ -179,6 +179,8 @@ import org.eclipse.m2e.core.internal.MavenPluginActivator;
 import org.eclipse.m2e.core.internal.Messages;
 import org.eclipse.m2e.core.internal.NoSuchComponentException;
 import org.eclipse.m2e.core.internal.preferences.MavenPreferenceConstants;
+import org.eclipse.m2e.core.internal.project.registry.ProjectRegistryManager;
+import org.eclipse.m2e.core.project.IMavenProjectFacade;
 
 
 public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
@@ -659,7 +661,8 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     MavenExecutionResult result = new DefaultMavenExecutionResult();
     try {
       configuration.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
-      ProjectBuildingResult projectBuildingResult = lookup(ProjectBuilder.class).build(pomFile, configuration);
+      ProjectBuildingResult projectBuildingResult = lookup(ProjectBuilder.class)
+          .build(pomFile, configuration);
       result.setProject(projectBuildingResult.getProject());
       result.setDependencyResolutionResult(projectBuildingResult.getDependencyResolutionResult());
       if (hasLifecycleParticipants(projectBuildingResult.getProject())) {
@@ -815,7 +818,33 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   }
 
   /*package*/MavenProject resolveParentProject(RepositorySystemSession repositorySession, MavenProject child,
-      ProjectBuildingRequest configuration) throws CoreException {
+	      ProjectBuildingRequest configuration) throws CoreException {
+    if(child.getParent() != null) {
+      ProjectRegistryManager tempProjectRegistryManager = MavenPluginActivator.getDefault()
+          .getMavenProjectManagerImpl();
+      IMavenProjectFacade projectFacade = tempProjectRegistryManager.getMavenProject(child.getParent().getGroupId(), child.getParent().getArtifactId(), child.getParent().getVersion());
+      if(projectFacade != null) {
+        // workspace project: use cached MavenProject if available
+        MavenProject mavenProject = projectFacade.getMavenProject();
+        if (mavenProject != null) {
+          return mavenProject;
+        }
+      } else {
+        // not a workspace project, safely use cached instance
+        if(child.getParent().getFile() == null) {
+          // make sure the file is set
+          Artifact parentArtifact = child.getParentArtifact();
+          if(parentArtifact != null && parentArtifact.getFile() != null) {
+            child.getParent().setFile(parentArtifact.getFile());
+            parentArtifact.getFile();
+          }
+        }
+        if(child.getParent().getFile() != null) {
+          return child.getParent();
+        }
+      }
+    }
+
     configuration.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
     configuration.setRepositorySession(repositorySession);
 
