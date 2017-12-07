@@ -39,6 +39,10 @@ public class DependencyResolutionContext {
     this.pomFiles.addAll(pomFiles);
   }
 
+  public int size() {
+    return pomFiles.size();
+  }
+
   public synchronized IFile pop() {
     Iterator<IFile> i = pomFiles.iterator();
     IFile pom = i.next();
