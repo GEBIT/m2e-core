@@ -22,6 +22,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
@@ -30,6 +31,8 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.eclipse.core.internal.resources.Workspace;
+import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFile;
@@ -397,6 +400,23 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     } else {
       pomsToRefresh.addAll(pomFiles);
     }
+
+    // sort projects by the current project dependencies we know
+    List<IFile> sortedPoms = new ArrayList<>();
+    outer: for(IBuildConfiguration buildConfig : ((Workspace) ResourcesPlugin.getWorkspace()).getBuildOrder()) {
+      // find possible match
+      for(ListIterator<IFile> it = pomsToRefresh.listIterator(); it.hasNext();) {
+        IFile pom = it.next();
+        if(pom.getProject().equals(buildConfig.getProject())) {
+          sortedPoms.add(pom);
+          it.remove();
+          continue outer;
+        }
+      }
+    }
+    // now add all remaining
+    sortedPoms.addAll(pomsToRefresh);
+    pomsToRefresh = sortedPoms;
 
     // refresh projects and update all dependencies
     // this will ensure that project registry is up-to-date on GAV of all projects being updated
