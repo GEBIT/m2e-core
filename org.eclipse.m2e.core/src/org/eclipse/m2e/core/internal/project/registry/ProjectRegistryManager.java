@@ -1081,7 +1081,14 @@ public class ProjectRegistryManager {
     if(mavenProject == null) {
       try {
         mavenProject = mavenProjectCache.get(facade,
-            () -> readProjectWithDependencies(facade.getPom(), facade.getResolverConfiguration(), monitor));
+            () -> {
+              for(Map.Entry<MavenProjectFacade, MavenProject> entry : getContextProjects().entrySet()) {
+                if(entry.getKey().getArtifactKey().equals(facade.getArtifactKey())) {
+                  return entry.getValue();
+                }
+              }
+              return readProjectWithDependencies(facade.getPom(), facade.getResolverConfiguration(), monitor);
+            });
       } catch(ExecutionException ex) {
         Throwable cause = ex.getCause();
         if(cause instanceof CoreException) {
@@ -1163,6 +1170,8 @@ public class ProjectRegistryManager {
       }
     };
     return CacheBuilder.newBuilder().maximumSize(Long.getLong("m2e.projectCacheSize", 5))
+        .softValues() // free ManveProjects if memory needed
+        .weakKeys() // don't pin MavenProjectFacades
         .removalListener(removalListener).build();
   }
 
