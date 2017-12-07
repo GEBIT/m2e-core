@@ -367,10 +367,14 @@ public class ProjectRegistryManager {
     final Map<IFile, Set<RequiredCapability>> originalRequirements = new HashMap<IFile, Set<RequiredCapability>>();
 
     // phase 1: build projects without dependencies and populate workspace with known projects
+    SubMonitor totalProgress = SubMonitor.convert(monitor, 100);
+    SubMonitor phase1Progress = SubMonitor.convert(totalProgress.newChild(70), 2 * context.size());
+
     while(!context.isEmpty()) {
-      if(monitor.isCanceled()) {
+      if(phase1Progress.isCanceled()) {
         throw new OperationCanceledException();
       }
+      phase1Progress.setWorkRemaining(2 * context.size());
 
       if(newState.isStale() || (syncRefreshThread != null && syncRefreshThread != Thread.currentThread())) {
         throw new StaleMutableProjectRegistryException();
@@ -378,7 +382,7 @@ public class ProjectRegistryManager {
 
       IFile pom = context.pop();
 
-      monitor.subTask(NLS.bind(Messages.ProjectRegistryManager_task_project, pom.getProject().getName()));
+      phase1Progress.subTask(NLS.bind(Messages.ProjectRegistryManager_task_project, pom.getProject().getName()));
       MavenProjectFacade oldFacade = newState.getProjectFacade(pom);
 
       context.forcePomFiles(flushCaches(newState, pom, oldFacade, isForceDependencyUpdate()));
@@ -398,7 +402,7 @@ public class ProjectRegistryManager {
           context.forcePomFiles(newState.getVersionedDependents(mavenArtifactImportCapability, true));
         }
 
-        newFacade = readMavenProjectFacade(pom, context, newState, monitor);
+        newFacade = readMavenProjectFacade(pom, context, newState, phase1Progress.newChild(1));
       } else {
         // refresh children of deleted/closed parent
         if(oldFacade != null) {
@@ -409,6 +413,7 @@ public class ProjectRegistryManager {
               .createMavenArtifactImport(oldFacade.getArtifactKey());
           context.forcePomFiles(newState.getVersionedDependents(mavenArtifactImportCapability, true));
         }
+        phase1Progress.worked(1);
       }
 
       newState.setProject(pom, newFacade);
@@ -445,14 +450,18 @@ public class ProjectRegistryManager {
       // this will be reconciled during the second phase
 
       secondPhaseBacklog.add(pom);
+
+      phase1Progress.worked(1);
     }
+    phase1Progress.done();
 
     context.forcePomFiles(secondPhaseBacklog);
 
     // phase 2: resolve project dependencies
     Set<IFile> secondPhaseProcessed = new HashSet<IFile>();
+    SubMonitor phase2Progress = SubMonitor.convert(totalProgress.newChild(30), 2 * context.size());
     while(!context.isEmpty()) {
-      if(monitor.isCanceled()) {
+      if(phase2Progress.isCanceled()) {
         throw new OperationCanceledException();
       }
 
@@ -476,7 +485,7 @@ public class ProjectRegistryManager {
         MavenProject mavenProject = getMavenProject(newFacade);
         if(mavenProject == null) {
           // facade from workspace state that has not been refreshed yet 
-          newFacade = readMavenProjectFacade(pom, context, newState, monitor);
+          newFacade = readMavenProjectFacade(pom, context, newState, phase2Progress.newChild(1));
         } else {
           // recreate facade instance to trigger project changed event
           // this is only necessary for facades that are refreshed because their dependencies changed
@@ -484,6 +493,7 @@ public class ProjectRegistryManager {
           putMavenProject(newFacade, null);
           newFacade = new MavenProjectFacade(newFacade);
           putMavenProject(newFacade, mavenProject);
+          phase2Progress.worked(1);
         }
       }
 
@@ -502,8 +512,9 @@ public class ProjectRegistryManager {
         refreshPhase2(newState, context, originalCapabilities, originalRequirements, pom, newFacade, monitor);
       }
 
-      monitor.worked(1);
+      phase2Progress.worked(1);
     }
+    phase2Progress.done();
   }
 
   void refreshPhase2(MutableProjectRegistry newState, DependencyResolutionContext context,
