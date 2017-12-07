@@ -19,6 +19,7 @@ import org.apache.maven.plugin.PluginArtifactsCache;
 import org.apache.maven.plugin.PluginRealmCache;
 import org.apache.maven.plugin.ProjectArtifactsCache;
 import org.apache.maven.plugin.internal.PluginDependenciesResolver;
+import org.apache.maven.project.ProjectBuilder;
 import org.apache.maven.project.ProjectRealmCache;
 import org.apache.maven.project.artifact.MavenMetadataCache;
 
@@ -48,6 +49,7 @@ public class DefaultMavenComponentContributor implements IMavenComponentContribu
         EclipseClassRealmManagerDelegate.ROLE_HINT);
     binder.bind(RepositoryListener.class, EclipseRepositoryListener.class, EclipseRepositoryListener.ROLE_HINT);
     binder.bind(ContextRepositorySystemSession.class, ContextRepositorySystemSessionImpl.class, null);
+    binder.bind(ProjectBuilder.class, EclipseProjectBuilder.class, null);
 
   }
 

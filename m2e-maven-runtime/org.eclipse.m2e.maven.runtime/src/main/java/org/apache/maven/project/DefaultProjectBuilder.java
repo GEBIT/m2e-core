@@ -113,14 +113,14 @@ public class DefaultProjectBuilder
     public ProjectBuildingResult build( File pomFile, ProjectBuildingRequest request )
         throws ProjectBuildingException
     {
-        return build( pomFile, new FileModelSource( pomFile ), new InternalConfig( request ) );
+        return build( pomFile, new FileModelSource( pomFile ), createInternalConfig( request, null ) );
     }
 
     @Override
     public ProjectBuildingResult build( ModelSource modelSource, ProjectBuildingRequest request )
         throws ProjectBuildingException
     {
-        return build( null, modelSource, new InternalConfig( request ) );
+        return build( null, modelSource, createInternalConfig( request, null ) );
     }
 
     private ProjectBuildingResult build( File pomFile, ModelSource modelSource, InternalConfig config )
@@ -170,8 +170,8 @@ public class DefaultProjectBuilder
 
                 modelProblems = result.getProblems();
 
-                initProject( project, Collections.<String, MavenProject>emptyMap(), result,
-                             new HashMap<File, Boolean>(), projectBuildingRequest );
+                initProject( project, config.projectIndex, result, new HashMap<File, Boolean>(),
+                        projectBuildingRequest );
             }
             else if ( projectBuildingRequest.isResolveDependencies() )
             {
@@ -261,7 +261,7 @@ public class DefaultProjectBuilder
 
         ModelResolver resolver =
             new ProjectModelResolver( config.session, trace, repoSystem, repositoryManager, config.repositories,
-                                      configuration.getRepositoryMerging(), config.modelPool );
+                                      configuration.getRepositoryMerging(), config.modelCache );
 
         request.setValidationLevel( configuration.getValidationLevel() );
         request.setProcessPlugins( configuration.isProcessPlugins() );
@@ -291,7 +291,7 @@ public class DefaultProjectBuilder
         org.eclipse.aether.artifact.Artifact pomArtifact = RepositoryUtils.toArtifact( artifact );
         pomArtifact = ArtifactDescriptorUtils.toPomArtifact( pomArtifact );
 
-        InternalConfig config = new InternalConfig( request );
+        InternalConfig config = createInternalConfig( request, null );
 
         boolean localProject;
 
@@ -351,22 +351,22 @@ public class DefaultProjectBuilder
 
         List<InterimResult> interimResults = new ArrayList<>();
 
-        InternalConfig config = new InternalConfig( request );
+        ReactorModelCache modelCache = new ReactorModelCache();
 
-        Map<String, MavenProject> projectIndex = new HashMap<>( 256 );
+        InternalConfig config = createInternalConfig( request, modelCache );
 
         boolean noErrors =
-            build( results, interimResults, projectIndex, pomFiles, new LinkedHashSet<File>(), true, recursive,
+            build( results, interimResults, config.projectIndex, pomFiles, new LinkedHashSet<File>(), true, recursive,
                    config );
 
-        populateReactorModelPool( config.modelPool, interimResults );
+        populateReactorModelPool( modelCache, interimResults );
 
         ClassLoader oldContextClassLoader = Thread.currentThread().getContextClassLoader();
 
         try
         {
             noErrors =
-                build( results, new ArrayList<MavenProject>(), projectIndex, interimResults, request,
+                build( results, new ArrayList<MavenProject>(), config, interimResults, request,
                        new HashMap<File, Boolean>() ) && noErrors;
         }
         finally
@@ -553,19 +553,19 @@ public class DefaultProjectBuilder
 
     }
 
-    private void populateReactorModelPool( ReactorModelPool reactorModelPool, List<InterimResult> interimResults )
+    private void populateReactorModelPool( ModelCache reactorModelPool, List<InterimResult> interimResults )
     {
         for ( InterimResult interimResult : interimResults )
         {
             Model model = interimResult.result.getEffectiveModel();
-            reactorModelPool.put( model.getGroupId(), model.getArtifactId(), model.getVersion(), model.getPomFile() );
+            reactorModelPool.put( model.getGroupId(), model.getArtifactId(), model.getVersion(), "pom", model.getPomFile() );
 
             populateReactorModelPool( reactorModelPool, interimResult.modules );
         }
     }
 
     private boolean build( List<ProjectBuildingResult> results, List<MavenProject> projects,
-                           Map<String, MavenProject> projectIndex, List<InterimResult> interimResults,
+                           InternalConfig config, List<InterimResult> interimResults,
                            ProjectBuildingRequest request, Map<File, Boolean> profilesXmls )
     {
         boolean noErrors = true;
@@ -577,11 +577,11 @@ public class DefaultProjectBuilder
                 ModelBuildingResult result = modelBuilder.build( interimResult.request, interimResult.result );
 
                 MavenProject project = interimResult.listener.getProject();
-                initProject( project, projectIndex, result, profilesXmls, request );
+                initProject( project, config.projectIndex, result, profilesXmls, request );
 
                 List<MavenProject> modules = new ArrayList<>();
                 noErrors =
-                    build( results, modules, projectIndex, interimResult.modules, request, profilesXmls ) && noErrors;
+                    build( results, modules, config, interimResult.modules, request, profilesXmls ) && noErrors;
 
                 projects.addAll( modules );
                 projects.add( project );
@@ -921,26 +921,28 @@ public class DefaultProjectBuilder
         return null;
     }
 
-    class InternalConfig
+    protected InternalConfig createInternalConfig( ProjectBuildingRequest request, ModelCache modelCache ) {
+        return new InternalConfig(request, modelCache, new HashMap<String, MavenProject>( 256 ));
+    }
+
+    protected class InternalConfig
     {
+
         public final ProjectBuildingRequest request;
 
         public final RepositorySystemSession session;
 
         public final List<RemoteRepository> repositories;
 
-        public final ReactorModelPool modelPool;
-        
         public final ModelCache modelCache;
 
-        InternalConfig( ProjectBuildingRequest request )
+        public final Map<String, MavenProject> projectIndex;
+
+        protected InternalConfig( ProjectBuildingRequest request, ModelCache modelCache, Map<String, MavenProject> projectIndex )
         {
             this.request = request;
-
-            // GEBIT: use NotDefaultModelCache which uses the Session to cache models
-            this.modelPool = new ReactorModelPool();
-            this.modelCache = new NotDefaultModelCache( request.getRepositorySession() );
-
+            this.modelCache = modelCache;
+            this.projectIndex = projectIndex;
             session =
                 LegacyLocalRepositoryManager.overlay( request.getLocalRepository(), request.getRepositorySession(),
                                                       repoSystem );
