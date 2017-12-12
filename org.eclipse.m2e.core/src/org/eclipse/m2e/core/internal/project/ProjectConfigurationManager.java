@@ -267,9 +267,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     }
     progress.subTask(Messages.ProjectConfigurationManager_task_refreshing);
 
-    projectManager.refresh(pomFiles, progress.newChild(75));
-
-    // TODO this emits project change events, which may be premature at this point
+    List<MavenProjectChangedEvent> events = projectManager.refresh(pomFiles, false, progress.newChild(75));
 
     //Creating maven facades 
     SubMonitor subProgress = SubMonitor.convert(progress.newChild(5), projects.size() * 100);
@@ -283,6 +281,8 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
         facades.add(facade);
       }
     }
+
+    projectManager.notifyProjectChangeListeners(events, monitor);
 
     //MNGECLIPSE-1028 : Sort projects by build order here, 
     //as dependent projects need to be configured before depending projects (in WTP integration for ex.)
