@@ -144,7 +144,7 @@ public class ProjectRegistryRefreshJob extends Job implements IResourceChangeLis
           ISchedulingRule rule = ResourcesPlugin.getWorkspace().getRoot();
           getJobManager().beginRule(rule, monitor);
           try {
-            manager.applyMutableProjectRegistry(newState, monitor);
+            manager.applyMutableProjectRegistry(newState, true, monitor);
           } finally {
             getJobManager().endRule(rule);
           }
