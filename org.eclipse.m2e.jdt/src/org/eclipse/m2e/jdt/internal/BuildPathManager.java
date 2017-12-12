@@ -306,12 +306,15 @@ public class BuildPathManager implements IMavenProjectChangedListener, IResource
 
       // make the reference to a parent in the workspace is contained
       IMavenProjectFacade facade = projectManager.getProject(project);
-      MavenProject mavenProject = facade.getMavenProject(monitor);
-      if(mavenProject.getParent() != null) {
-        IMavenProjectFacade parentProjectFacade = projectManager.getMavenProject(mavenProject.getParent().getGroupId(),
-            mavenProject.getParent().getArtifactId(), mavenProject.getParent().getVersion());
-        if(parentProjectFacade != null) {
-          projectEntries.add(parentProjectFacade.getProject().getName());
+      if(facade != null) {
+        MavenProject mavenProject = facade.getMavenProject(monitor);
+        if(mavenProject.getParent() != null) {
+          IMavenProjectFacade parentProjectFacade = projectManager.getMavenProject(
+              mavenProject.getParent().getGroupId(), mavenProject.getParent().getArtifactId(),
+              mavenProject.getParent().getVersion());
+          if(parentProjectFacade != null) {
+            projectEntries.add(parentProjectFacade.getProject().getName());
+          }
         }
       }
 

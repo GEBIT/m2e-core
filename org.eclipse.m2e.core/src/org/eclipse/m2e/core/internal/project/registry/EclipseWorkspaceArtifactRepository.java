@@ -143,7 +143,9 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
         return null;
       }
 
-      return file.toFile();
+      if(file != null) {
+        return file.toFile();
+      }
     }
 
     return null;

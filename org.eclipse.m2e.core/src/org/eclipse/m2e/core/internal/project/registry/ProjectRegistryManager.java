@@ -288,6 +288,12 @@ public class ProjectRegistryManager {
    * @since 1.4
    */
   public void refresh(final Collection<IFile> pomFiles, final IProgressMonitor monitor) throws CoreException {
+    refresh(pomFiles, true, monitor);
+  }
+
+  public List<MavenProjectChangedEvent> refresh(final Collection<IFile> pomFiles, final boolean notifiyFlag,
+      final IProgressMonitor monitor)
+      throws CoreException {
     SubMonitor progress = SubMonitor.convert(monitor, Messages.ProjectRegistryManager_task_refreshing, 100);
     ISchedulingRule rule = ResourcesPlugin.getWorkspace().getRoot();
     Job.getJobManager().beginRule(rule, progress);
@@ -298,7 +304,7 @@ public class ProjectRegistryManager {
       try {
         refresh(newState, pomFiles, progress.newChild(95));
 
-        applyMutableProjectRegistry(newState, progress.newChild(5));
+        return applyMutableProjectRegistry(newState, notifiyFlag, progress.newChild(5));
       } finally {
         newState.close();
       }
@@ -349,6 +355,15 @@ public class ProjectRegistryManager {
 
     maven.addLocalRepositoryListener(listener);
     try {
+      // flush all caches first, so we are sure to read everything fresh for all the projects to refresh
+      for(IFile pom : pomFiles) {
+        MavenProjectFacade oldFacade = newState.getProjectFacade(pom);
+        flushCaches(newState, pom, oldFacade, isForceDependencyUpdate());
+        if(oldFacade != null) {
+          putMavenProject(oldFacade, null); // maintain maven project cache
+        }
+      }
+
       refresh(newState, context, monitor);
     } finally {
       maven.removeLocalRepositoryListener(listener);
@@ -385,10 +400,6 @@ public class ProjectRegistryManager {
       phase1Progress.subTask(NLS.bind(Messages.ProjectRegistryManager_task_project, pom.getProject().getName()));
       MavenProjectFacade oldFacade = newState.getProjectFacade(pom);
 
-      context.forcePomFiles(flushCaches(newState, pom, oldFacade, isForceDependencyUpdate()));
-      if(oldFacade != null) {
-        putMavenProject(oldFacade, null); // maintain maven project cache
-      }
       MavenProjectFacade newFacade = null;
       if(pom.isAccessible() && pom.getProject().hasNature(IMavenConstants.NATURE_ID)) {
         if(oldFacade != null) {
@@ -455,6 +466,7 @@ public class ProjectRegistryManager {
     }
     phase1Progress.done();
 
+    context.reset();
     context.forcePomFiles(secondPhaseBacklog);
 
     // phase 2: resolve project dependencies
@@ -933,7 +945,9 @@ public class ProjectRegistryManager {
    * @throws StaleMutableProjectRegistryException if primary project registry was modified after mutable registry has
    *           been created
    */
-  void applyMutableProjectRegistry(MutableProjectRegistry newState, IProgressMonitor monitor) throws CoreException {
+  List<MavenProjectChangedEvent> applyMutableProjectRegistry(MutableProjectRegistry newState, boolean notifyFlag,
+      IProgressMonitor monitor)
+      throws CoreException {
     // don't cache maven sessions
 
     for(MavenProjectFacade facade : newState.getProjects()) {
@@ -944,7 +958,12 @@ public class ProjectRegistryManager {
     }
     List<MavenProjectChangedEvent> events = projectRegistry.apply(newState);
     //stateReader.writeWorkspaceState(projectRegistry);
-    notifyProjectChangeListeners(events, monitor);
+    if(notifyFlag) {
+      notifyProjectChangeListeners(events, monitor);
+      return null;
+    } else {
+      return events;
+    }
   }
 
   public void writeWorkspaceState() {
