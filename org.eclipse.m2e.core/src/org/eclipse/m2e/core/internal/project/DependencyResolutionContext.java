@@ -12,6 +12,7 @@
 package org.eclipse.m2e.core.internal.project;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -26,6 +27,7 @@ public class DependencyResolutionContext {
 
   /** Set of all pom files to resolve */
   private final LinkedHashSet<IFile> pomFiles;
+  private final HashSet<IFile> processedPomFiles = new HashSet<>();
 
   public DependencyResolutionContext(Collection<IFile> pomFiles) {
     this.pomFiles = new LinkedHashSet<IFile>(pomFiles);
@@ -36,7 +38,14 @@ public class DependencyResolutionContext {
   }
 
   public synchronized void forcePomFiles(Set<IFile> pomFiles) {
-    this.pomFiles.addAll(pomFiles);
+    if (!pomFiles.isEmpty()) {
+      pomFiles.removeAll(processedPomFiles);
+      this.pomFiles.addAll(pomFiles);
+    }
+  }
+
+  public void reset() {
+    processedPomFiles.clear();
   }
 
   public int size() {
@@ -46,6 +55,7 @@ public class DependencyResolutionContext {
   public synchronized IFile pop() {
     Iterator<IFile> i = pomFiles.iterator();
     IFile pom = i.next();
+    processedPomFiles.add(pom);
     i.remove();
     return pom;
   }
