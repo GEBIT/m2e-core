@@ -122,6 +122,11 @@ public class LifecycleMappingConfiguration implements ILifecycleMappingConfigura
         for(IPluginExecutionMetadata metadata : metadatas) {
           if(metadata.getAction() == PluginExecutionAction.configurator) {
             MojoExecution execution = facade.getMojoExecution(entry.getKey(), monitor);
+            if(execution == null) {
+              // sanity check
+              log.error("Execution " + entry.getKey() + " not found for " + facade.getProject().getName());
+              continue;
+            }
             mojoExecutionConfiguration.put(entry.getKey(), execution.getConfiguration());
             break;
           }
