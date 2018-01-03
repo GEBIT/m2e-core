@@ -69,6 +69,11 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       return null;
     }
 
+    if(!classifier.isEmpty()) {
+      // cannot resolve these from the workspace
+      return null;
+    }
+
     // check in the workspace, note that workspace artifacts never have classifiers
     IFile pom = getWorkspaceArtifact(groupId, artifactId, baseVersion);
     if(pom == null || !pom.isAccessible()) {
@@ -77,7 +82,9 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
         constraint = versionScheme.parseVersionConstraint(baseVersion);
         IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
         IProject projectLikeArtifact = root.getProject(artifactId);
-        if(projectLikeArtifact.exists()) {
+        if(!projectLikeArtifact.isAccessible()) {
+          pom = null;
+        } else if(projectLikeArtifact.exists()) {
           // has it a pom?
           IFile projectPom = projectLikeArtifact.getFile("pom.xml");
           if(projectPom.exists()) {
