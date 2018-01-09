@@ -355,4 +355,9 @@ public interface IMaven {
    * @since 1.10
    */
   <T> T lookup(Class<T> clazz) throws CoreException;
+
+  /**
+   * Invalidates the shared repository cache that is reused among sessions.
+   */
+  void invalidateSharedRepositoryCache();
 }

@@ -116,6 +116,14 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     IResourceChangeListener {
   /*package*/static final Logger log = LoggerFactory.getLogger(ProjectConfigurationManager.class);
 
+  private static final int WORK_REFRESH_LOCAL = 1;
+
+  private static final int WORK_REFRESH = 4;
+
+  private static final int WORK_UPDATE_CONFIGURATION = 4;
+
+  private static final int WORK_CLEAN_PROJECTS = 1;
+
   final ProjectRegistryManager projectManager;
 
   final MavenModelManager mavenModelManager;
@@ -367,6 +375,9 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
       final boolean updateConfiguration, final boolean cleanProjects, final boolean refreshFromLocal,
       final IProgressMonitor monitor) {
     try {
+      // invalidate shared repository cache on explicit project update
+      maven.invalidateSharedRepositoryCache();
+
       return maven.execute(request.isOffline(), request.isForceDependencyUpdate(),
           new ICallable<Map<String, IStatus>>() {
             public Map<String, IStatus> call(IMavenExecutionContext context, IProgressMonitor monitor) {

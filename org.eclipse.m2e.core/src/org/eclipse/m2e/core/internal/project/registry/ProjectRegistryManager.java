@@ -232,7 +232,7 @@ public class ProjectRegistryManager {
   /**
    * Removes specified poms from the cache. Adds dependent poms to pomSet but does not directly refresh dependent poms.
    * Recursively removes all nested modules if appropriate.
-   * 
+   *
    * @return a {@link Set} of {@link IFile} affected poms
    */
   public Set<IFile> remove(MutableProjectRegistry state, Set<IFile> poms, boolean force) {
@@ -250,7 +250,7 @@ public class ProjectRegistryManager {
   /**
    * Removes the pom from the cache. Adds dependent poms to pomSet but does not directly refresh dependent poms.
    * Recursively removes all nested modules if appropriate.
-   * 
+   *
    * @return a {@link Set} of {@link IFile} affected poms
    */
   public Set<IFile> remove(MutableProjectRegistry state, IFile pom) {
@@ -296,7 +296,7 @@ public class ProjectRegistryManager {
   /**
    * This method acquires workspace root's lock and sends project change events. It is meant for synchronous registry
    * updates.
-   * 
+   *
    * @since 1.4
    */
   public void refresh(final Collection<IFile> pomFiles, final IProgressMonitor monitor) throws CoreException {
@@ -335,7 +335,7 @@ public class ProjectRegistryManager {
 
     final DependencyResolutionContext context = new DependencyResolutionContext(pomFiles);
 
-    // safety net -- do not force refresh of the same installed/resolved artifact more than once 
+    // safety net -- do not force refresh of the same installed/resolved artifact more than once
     final Set<ArtifactKey> installedArtifacts = new HashSet<ArtifactKey>();
 
     ILocalRepositoryListener listener = (repositoryBasedir, baseArtifact, artifact, artifactFile) -> {
@@ -496,6 +496,11 @@ public class ProjectRegistryManager {
       }
 
       final IFile pom = context.pop();
+
+      if(!secondPhaseProcessed.add(pom)) {
+        // because workspace contents is fully known at this point, each project needs to be resolved at most once
+        continue;
+      }
 
       MavenProjectFacade newFacade = null;
       if(pom.isAccessible() && pom.getProject().hasNature(IMavenConstants.NATURE_ID)) {
@@ -981,7 +986,7 @@ public class ProjectRegistryManager {
    * Applies mutable project registry to the primary project registry and and corresponding MavenProjectChangedEvent's
    * to all registered IMavenProjectChangedListener's. This method must be called from a thread holding workspace root's
    * lock.
-   * 
+   *
    * @throws StaleMutableProjectRegistryException if primary project registry was modified after mutable registry has
    *           been created
    */
