@@ -333,6 +333,14 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       DefaultRepositorySystemSession session = (DefaultRepositorySystemSession) ((DefaultMaven) lookup(Maven.class))
           .newRepositorySession(request);
       final String updatePolicy = mavenConfiguration.getGlobalUpdatePolicy();
+
+      // disable the versionResolver cache, as it does not work well together with shared repository cache
+      Map<String, Object> configProps = new HashMap<>(session.getConfigProperties());
+      if(!configProps.containsKey("aether.versionResolver.noCache")) {
+        configProps.put("aether.versionResolver.noCache", true);
+      }
+      session.setConfigProperties(configProps);
+
       return new FilterRepositorySystemSession(session, request.isUpdateSnapshots() ? null : updatePolicy);
     } catch(CoreException ex) {
       log.error(ex.getMessage(), ex);
@@ -1569,6 +1577,11 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     IMavenExecutionContext context = createExecutionContext();
     context.getExecutionRequest().setOffline(offline);
     context.getExecutionRequest().setUpdateSnapshots(forceDependencyUpdate);
+    if(getExecutionContext() == null) {
+      // this is an explicit project update, the implicit one is nested. Here we can safely use the cache, as we have
+      // a new cache. Unfortunately this is the only way to detect this without changing the IMaven API...
+      context.getExecutionRequest().getUserProperties().put("aether.versionResolver.noCache", false);
+    }
     return context.execute(callable, monitor);
   }
 
