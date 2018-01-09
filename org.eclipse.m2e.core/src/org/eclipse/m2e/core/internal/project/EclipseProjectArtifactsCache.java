@@ -16,8 +16,8 @@ import java.util.Set;
 
 import javax.inject.Singleton;
 
-import org.apache.maven.plugin.DefaultProjectArtifactsCache;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.artifact.DefaultProjectArtifactsCache;
 
 import org.eclipse.m2e.core.embedder.ArtifactKey;
 

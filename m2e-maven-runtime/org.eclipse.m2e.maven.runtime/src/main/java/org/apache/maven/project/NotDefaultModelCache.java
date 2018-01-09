@@ -39,7 +39,7 @@ public class NotDefaultModelCache
     static {
         try {
             DefaultModelCacheKey_class = Class.forName("org.apache.maven.repository.internal.DefaultModelCache$Key");
-            DefaultModelCacheKey_new = DefaultModelCacheKey_class.getConstructor(String.class, String.class, String.class, String.class);
+            DefaultModelCacheKey_new = DefaultModelCacheKey_class.getDeclaredConstructor(String.class, String.class, String.class, String.class);
             DefaultModelCacheKey_new.setAccessible(true);
         } catch (ClassNotFoundException | NoSuchMethodException | SecurityException exc) {
             throw new RuntimeException("Failed to access DefaultModelCache.Key", exc);

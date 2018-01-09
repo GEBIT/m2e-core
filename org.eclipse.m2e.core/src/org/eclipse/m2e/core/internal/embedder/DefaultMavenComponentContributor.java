@@ -17,11 +17,11 @@ import org.apache.maven.classrealm.ClassRealmManagerDelegate;
 import org.apache.maven.plugin.ExtensionRealmCache;
 import org.apache.maven.plugin.PluginArtifactsCache;
 import org.apache.maven.plugin.PluginRealmCache;
-import org.apache.maven.plugin.ProjectArtifactsCache;
 import org.apache.maven.plugin.internal.PluginDependenciesResolver;
 import org.apache.maven.project.ProjectBuilder;
 import org.apache.maven.project.ProjectRealmCache;
 import org.apache.maven.project.artifact.MavenMetadataCache;
+import org.apache.maven.project.artifact.ProjectArtifactsCache;
 
 import org.sonatype.plexus.build.incremental.BuildContext;
 
