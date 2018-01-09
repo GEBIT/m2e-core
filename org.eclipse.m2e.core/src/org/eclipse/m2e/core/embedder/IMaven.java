@@ -334,4 +334,9 @@ public interface IMaven {
    * @since 1.4
    */
   IMavenExecutionContext getExecutionContext();
+
+  /**
+   * Invalidates the shared repository cache that is reused among sessions.
+   */
+  void invalidateSharedRepositoryCache();
 }
