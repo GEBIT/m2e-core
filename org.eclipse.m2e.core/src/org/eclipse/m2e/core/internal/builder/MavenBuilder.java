@@ -244,10 +244,26 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     if(projectDelta == null) {
       return true;
     }
+
+    for(IMarker problem : project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
+      log.info(
+          "Marker " + problem.getType() + " severity " + problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO));
+      if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
+        // force build to give a chance to correct errors
+        log.error("Build due to marker " + problem.getType());
+        return true;
+      }
+    }
+
     if(projectDelta.getAffectedChildren().length == 0) {
       // from the spec of getDelta(), we should not need to build, but in practice, we need to
       // build whenever a parent project changes, for which we do not get a delta, probably because
       // it is a different build
+      if("true".equals(System.getProperty("m2e.noBuildOnEmptyDelta"))) {
+        // configured to not build on empty delta. This might leave dependent projects with build errors, especially
+        // if the delta is from a parent in which new sources were added (generated)
+        return false;
+      }
       return true;
     }
 
