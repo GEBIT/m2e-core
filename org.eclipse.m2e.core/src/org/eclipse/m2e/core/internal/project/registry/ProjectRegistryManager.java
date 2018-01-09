@@ -376,8 +376,6 @@ public class ProjectRegistryManager {
       IProgressMonitor monitor) throws CoreException {
     Set<IFile> secondPhaseBacklog = new LinkedHashSet<IFile>();
 
-    maven.invalidateSharedRepositoryCache();
-
     final Map<IFile, Set<Capability>> originalCapabilities = new HashMap<IFile, Set<Capability>>();
     final Map<IFile, Set<RequiredCapability>> originalRequirements = new HashMap<IFile, Set<RequiredCapability>>();
 
