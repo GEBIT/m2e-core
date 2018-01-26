@@ -36,6 +36,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.core.runtime.OperationCanceledException;
+import org.eclipse.core.runtime.QualifiedName;
 
 import org.codehaus.plexus.util.MatchPatterns;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
@@ -72,6 +73,8 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
   private static final String ELEMENT_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
 
   private static final String ELEMENT_IGNORE = "ignore"; //$NON-NLS-1$
+
+  public static QualifiedName PPROP_FORCE_BUILD = new QualifiedName(MavenBuilder.class.getName(), "forceBuild"); //$NON-NLS-1$
 
   final MavenBuilderImpl builder = new MavenBuilderImpl(this);
 
@@ -116,7 +119,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
 
           MavenProject mavenProject;
           try {
-            // make sure projectFacade has MavenProject instance loaded 
+            // make sure projectFacade has MavenProject instance loaded
             mavenProject = projectFacade.getMavenProject(monitor);
           } catch(CoreException ce) {
             //unable to read the project facade
@@ -240,6 +243,10 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     }
 
     IProject project = getProject();
+    if(project.getPersistentProperty(PPROP_FORCE_BUILD) != null) {
+      project.setPersistentProperty(PPROP_FORCE_BUILD, null);
+      return true;
+    }
     IResourceDelta projectDelta = getDelta(project);
     if(projectDelta == null) {
       return true;
@@ -318,7 +325,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
             return true;
           }
           isNeeded[0] = true;
-          // no need to check any other part of the delta 
+          // no need to check any other part of the delta
           throw new OperationCanceledException();
         }
       });
@@ -331,7 +338,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
   }
 
   private String[] getProjectIgnoredPathes(IProject project, IProgressMonitor monitor) throws CoreException {
-    // TODO this does not merge configuration from profiles 
+    // TODO this does not merge configuration from profiles
     IMavenProjectFacade facade = projectManager.getProject(project);
     if(facade != null) {
       MavenProject mavenProject = facade.getMavenProject(monitor);
@@ -379,7 +386,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
 
   /**
    * Returns a list of project relative paths that, when changed, shall trigger a build.
-   * 
+   *
    * @param project
    * @return
    */
@@ -398,7 +405,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
 
   /**
    * Returns a list of project relative paths that, when changed, shall not trigger a build.
-   * 
+   *
    * @param project
    * @return
    */
@@ -430,7 +437,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
   /**
    * Used to calculate the workspace dependencies of the given project in order to get build deltas for them next time
    * again.
-   * 
+   *
    * @param project
    * @return
    */
