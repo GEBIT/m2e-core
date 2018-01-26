@@ -247,6 +247,8 @@ public class MavenBuilderImpl {
           IResource resource;
           if(!file.exists()) {
             resource = project.findMember(path);
+          } else if(path.isEmpty()) {
+            resource = project;
           } else if(file.isDirectory()) {
             resource = project.getFolder(path);
           } else {
@@ -285,6 +287,10 @@ public class MavenBuilderImpl {
       return null;
     }
 
+    if(filePath.equals(projectPath)) {
+      // project itself
+      return new Path("");
+    }
     return filePath.removeFirstSegments(projectPath.segmentCount());
   }
 
