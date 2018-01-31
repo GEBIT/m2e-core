@@ -1049,7 +1049,8 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
       listener.projectCreated(project);
     }
 
-    ResolverConfiguration resolverConfiguration = configuration.getResolverConfiguration();
+    ResolverConfiguration resolverConfiguration = ResolverConfigurationIO.readResolverConfiguration(project,
+        configuration.getResolverConfiguration());
     enableBasicMavenNature(project, resolverConfiguration, monitor);
 
     // create empty/marker persistent configuration
