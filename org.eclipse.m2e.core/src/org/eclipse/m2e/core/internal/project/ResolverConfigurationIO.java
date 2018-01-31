@@ -107,16 +107,21 @@ public class ResolverConfigurationIO {
   }
 
   public static ResolverConfiguration readResolverConfiguration(IProject project) {
+    return readResolverConfiguration(project, new ResolverConfiguration());
+  }
+
+  public static ResolverConfiguration readResolverConfiguration(IProject project,
+      ResolverConfiguration defaultConfiguration) {
     IScopeContext projectScope = new ProjectScope(project);
     IEclipsePreferences projectNode = projectScope.getNode(IMavenConstants.PLUGIN_ID);
     if(projectNode == null) {
-      return new ResolverConfiguration();
+      return defaultConfiguration;
     }
 
     String version = projectNode.get(P_VERSION, null);
     if(version == null) { // migrate from old config
       // return LegacyBuildPathManager.getResolverConfiguration(project);
-      return new ResolverConfiguration();
+      return defaultConfiguration;
     }
 
     ResolverConfiguration configuration = new ResolverConfiguration();
