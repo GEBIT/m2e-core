@@ -68,11 +68,11 @@ import org.apache.maven.plugin.ExtensionRealmCache;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.PluginArtifactsCache;
 import org.apache.maven.plugin.PluginRealmCache;
-import org.apache.maven.plugin.ProjectArtifactsCache;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuildingRequest;
 import org.apache.maven.project.ProjectRealmCache;
 import org.apache.maven.project.artifact.MavenMetadataCache;
+import org.apache.maven.project.artifact.ProjectArtifactsCache;
 import org.apache.maven.repository.DelegatingLocalArtifactRepository;
 
 import org.eclipse.m2e.core.embedder.ArtifactKey;
@@ -218,7 +218,7 @@ public class ProjectRegistryManager {
   /**
    * Removes specified poms from the cache. Adds dependent poms to pomSet but does not directly refresh dependent poms.
    * Recursively removes all nested modules if appropriate.
-   * 
+   *
    * @return a {@link Set} of {@link IFile} affected poms
    */
   public Set<IFile> remove(MutableProjectRegistry state, Set<IFile> poms, boolean force) {
@@ -236,7 +236,7 @@ public class ProjectRegistryManager {
   /**
    * Removes the pom from the cache. Adds dependent poms to pomSet but does not directly refresh dependent poms.
    * Recursively removes all nested modules if appropriate.
-   * 
+   *
    * @return a {@link Set} of {@link IFile} affected poms
    */
   public Set<IFile> remove(MutableProjectRegistry state, IFile pom) {
@@ -284,7 +284,7 @@ public class ProjectRegistryManager {
   /**
    * This method acquires workspace root's lock and sends project change events. It is meant for synchronous registry
    * updates.
-   * 
+   *
    * @since 1.4
    */
   public void refresh(final Collection<IFile> pomFiles, final IProgressMonitor monitor) throws CoreException {
@@ -323,7 +323,7 @@ public class ProjectRegistryManager {
 
     final DependencyResolutionContext context = new DependencyResolutionContext(pomFiles);
 
-    // safety net -- do not force refresh of the same installed/resolved artifact more than once 
+    // safety net -- do not force refresh of the same installed/resolved artifact more than once
     final Set<ArtifactKey> installedArtifacts = new HashSet<ArtifactKey>();
 
     ILocalRepositoryListener listener = new ILocalRepositoryListener() {
@@ -482,7 +482,7 @@ public class ProjectRegistryManager {
       final IFile pom = context.pop();
 
       if(!secondPhaseProcessed.add(pom)) {
-        // because workspace contents is fully known at this point, each project needs to be resolved at most once 
+        // because workspace contents is fully known at this point, each project needs to be resolved at most once
         continue;
       }
 
@@ -494,7 +494,7 @@ public class ProjectRegistryManager {
       if(newFacade != null) {
         MavenProject mavenProject = getMavenProject(newFacade);
         if(mavenProject == null) {
-          // facade from workspace state that has not been refreshed yet 
+          // facade from workspace state that has not been refreshed yet
           newFacade = readMavenProjectFacade(pom, context, newState, phase2Progress.newChild(1));
         } else {
           // recreate facade instance to trigger project changed event
@@ -939,7 +939,7 @@ public class ProjectRegistryManager {
    * Applies mutable project registry to the primary project registry and and corresponding MavenProjectChangedEvent's
    * to all registered IMavenProjectChangedListener's. This method must be called from a thread holding workspace root's
    * lock.
-   * 
+   *
    * @throws StaleMutableProjectRegistryException if primary project registry was modified after mutable registry has
    *           been created
    */
