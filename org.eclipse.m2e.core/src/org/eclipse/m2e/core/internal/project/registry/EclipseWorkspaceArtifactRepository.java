@@ -133,6 +133,9 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
       if(!"pom".equals(extension) && !"xml".equals(extension)) { //$NON-NLS-1$
         MavenProjectFacade facade = context.state.getProjectFacade(pom);
 
+        if(facade == null) {
+          return null;
+        }
         IWorkspaceClassifierResolver resolver = MavenPlugin.getWorkspaceClassifierResolverManager().getResolver();
         IPath location = resolver.resolveClassifier(facade, classifier);
 

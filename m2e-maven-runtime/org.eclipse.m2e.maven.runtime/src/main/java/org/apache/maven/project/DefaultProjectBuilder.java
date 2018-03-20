@@ -75,6 +75,7 @@ import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResult;
 
 /**
+ * DefaultProjectBuilder
  */
 @Component( role = ProjectBuilder.class )
 public class DefaultProjectBuilder
@@ -382,6 +383,7 @@ public class DefaultProjectBuilder
         return results;
     }
 
+    @SuppressWarnings( "checkstyle:parameternumber" )
     private boolean build( List<ProjectBuildingResult> results, List<InterimResult> interimResults,
                            Map<String, MavenProject> projectIndex, List<File> pomFiles, Set<File> aggregatorFiles,
                            boolean isRoot, boolean recursive, InternalConfig config )
@@ -403,6 +405,7 @@ public class DefaultProjectBuilder
         return noErrors;
     }
 
+    @SuppressWarnings( "checkstyle:parameternumber" )
     private boolean build( List<ProjectBuildingResult> results, List<InterimResult> interimResults,
                            Map<String, MavenProject> projectIndex, File pomFile, Set<File> aggregatorFiles,
                            boolean isRoot, boolean recursive, InternalConfig config )
@@ -603,6 +606,7 @@ public class DefaultProjectBuilder
         return noErrors;
     }
 
+    @SuppressWarnings( "checkstyle:methodlength" )
     private void initProject( MavenProject project, Map<String, MavenProject> projects, ModelBuildingResult result,
                               Map<File, Boolean> profilesXmls, ProjectBuildingRequest projectBuildingRequest )
     {
@@ -790,8 +794,8 @@ public class DefaultProjectBuilder
         {
             List<Dependency> deps;
             DependencyManagement dependencyManagement = project.getDependencyManagement();
-            if ( ( dependencyManagement != null ) && ( ( deps = dependencyManagement.getDependencies() ) != null )
-                && ( deps.size() > 0 ) )
+            if ( ( dependencyManagement != null ) && ( ( dependencyManagement.getDependencies() ) != null )
+            	&& ( dependencyManagement.getDependencies().size() > 0 ) )
             {
                 map = new HashMap<>();
                 for ( Dependency d : dependencyManagement.getDependencies() )
@@ -925,18 +929,21 @@ public class DefaultProjectBuilder
         return new InternalConfig(request, modelCache, new HashMap<String, MavenProject>( 256 ));
     }
 
+    /**
+     * InternalConfig
+     */
     protected class InternalConfig
     {
 
-        public final ProjectBuildingRequest request;
+        private final ProjectBuildingRequest request;
 
-        public final RepositorySystemSession session;
+        private final RepositorySystemSession session;
 
-        public final List<RemoteRepository> repositories;
+        private final List<RemoteRepository> repositories;
 
-        public final ModelCache modelCache;
+        private final ModelCache modelCache;
 
-        public final Map<String, MavenProject> projectIndex;
+        private final Map<String, MavenProject> projectIndex;
 
         protected InternalConfig( ProjectBuildingRequest request, ModelCache modelCache, Map<String, MavenProject> projectIndex )
         {
