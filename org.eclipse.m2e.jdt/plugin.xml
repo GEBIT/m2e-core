@@ -99,7 +99,13 @@
             name="Tests Classifier Classpath Provider">
       </classifierClasspathProvider>
    </extension>
-   
+  <extension
+        point="org.eclipse.jdt.core.compilationParticipant">
+     <compilationParticipant
+           class="org.eclipse.m2e.jdt.internal.MavenCompilationParticipant"
+           id="org.eclipse.m2e.jdt.compilationParticipant">
+     </compilationParticipant>
+  </extension>
  <extension
        id="buildpreventer"
        name="Unconfigured Build Preventer"
