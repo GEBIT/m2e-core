@@ -38,7 +38,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
     try {
       IProjectDescription tempDescription = tempProject.getDescription();
       if(tempDescription != null && hasJavaNature(tempDescription) && hasJavaBuilder(tempDescription)
-          && !hasClasspathFile(tempProject)) {
+          && !hasClasspathFile(tempProject) && hasPomFile(tempProject)) {
 
         preventBuild(tempProject, aMonitor);
         forgetLastBuiltState();
@@ -53,7 +53,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
 
   /**
    * Adds an error marker to the project and cancels the build.
-   * 
+   *
    * @param aProject
    * @param aMonitor
    * @throws CoreException
@@ -65,7 +65,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
 
   /**
    * Logs the given message and exception.
-   * 
+   *
    * @param aString
    * @param aEx
    */
@@ -76,7 +76,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
 
   /**
    * Returns <code>true</code> if the given project has the java nature
-   * 
+   *
    * @param aProject
    * @return
    * @throws CoreException
@@ -87,7 +87,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
 
   /**
    * Returns <code>true</code> if the given project has the java builder configured
-   * 
+   *
    * @param aProject
    * @return
    * @throws CoreException
@@ -104,7 +104,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
 
   /**
    * Returns <code>true</code> if the given project has an existing .classpath file
-   * 
+   *
    * @param aProject
    * @return
    */
@@ -114,8 +114,19 @@ public class BuildPreventer extends IncrementalProjectBuilder {
   }
 
   /**
+   * Returns <code>true</code> if the given project has an existing pom.xml file
+   *
+   * @param aProject
+   * @return
+   */
+  private boolean hasPomFile(IProject aProject) {
+    IFile tempFile = aProject.getFile("pom.xml");
+    return tempFile.exists();
+  }
+
+  /**
    * Adds a persistent syntax error marker to the given file.
-   * 
+   *
    * @param aFile the file to add the marker to.
    */
   public void addErrorTo(IProject aProject) {
@@ -137,7 +148,7 @@ public class BuildPreventer extends IncrementalProjectBuilder {
 
   /**
    * Creates an error marker for the given file.
-   * 
+   *
    * @param aFile
    * @return
    * @throws CoreException
