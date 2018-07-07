@@ -31,6 +31,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.eclipse.core.internal.resources.BuildConfiguration;
 import org.eclipse.core.internal.resources.Project;
 import org.eclipse.core.internal.resources.ProjectInfo;
 import org.eclipse.core.internal.resources.Workspace;
@@ -45,6 +46,7 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.IResourceChangeListener;
 import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.IWorkspace.ProjectOrder;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -110,6 +112,7 @@ import org.eclipse.m2e.core.project.configurator.ProjectConfigurationRequest;
  *
  * @author igor
  */
+@SuppressWarnings("restriction")
 public class ProjectConfigurationManager implements IProjectConfigurationManager, IMavenProjectChangedListener,
     IResourceChangeListener {
   /*package*/static final Logger log = LoggerFactory.getLogger(ProjectConfigurationManager.class);
@@ -409,6 +412,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
         try {
           project.refreshLocal(IResource.DEPTH_INFINITE, submonitorRefreshLocal.newChild(1,
               SubProgressMonitor.SUPPRESS_SUBTASK_LABEL));
+
           pomsToRefresh.add(pom);
         } catch(CoreException ex) {
           updateStatus.put(project.getName(), ex.getStatus());
@@ -419,12 +423,17 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     }
 
     // sort projects by the current project dependencies we know
+    IProject[] sortedProjects = new IProject[pomsToRefresh.size()];
+    for(int i = 0; i < pomsToRefresh.size(); ++i) {
+      sortedProjects[i] = pomsToRefresh.get(i).getProject();
+    }
+    ProjectOrder projectOrder = ResourcesPlugin.getWorkspace().computeProjectOrder(sortedProjects);
     List<IFile> sortedPoms = new ArrayList<>();
-    outer: for(IBuildConfiguration buildConfig : ((Workspace) ResourcesPlugin.getWorkspace()).getBuildOrder()) {
+    outer: for(IProject buildProject : projectOrder.projects) {
       // find possible match
       for(ListIterator<IFile> it = pomsToRefresh.listIterator(); it.hasNext();) {
         IFile pom = it.next();
-        if(pom.getProject().equals(buildConfig.getProject())) {
+        if(pom.getProject().equals(buildProject)) {
           sortedPoms.add(pom);
           it.remove();
           continue outer;
@@ -556,26 +565,30 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
         // update dynamic references
         List<IProject> references = new ArrayList<>();
-        if(!project.hasNature("org.eclipse.jdt.core.javanature")) {
-          // we can only do this for non-Java projects. Java project use dynamic references from the classpath
-          for(ArtifactRef ref : mavenProjectFacade.getMavenProjectArtifacts()) {
-            MavenProjectFacade depFacade = projectManager.getMavenProject(ref.getGroupId(), ref.getArtifactId(),
-                ref.getVersion());
-            if(depFacade != null) {
-              references.add(depFacade.getProject());
-            }
+        // we can only do this for non-Java projects. Java project use dynamic references from the classpath
+        for(ArtifactRef ref : mavenProjectFacade.getMavenProjectArtifacts()) {
+          MavenProjectFacade depFacade = projectManager.getMavenProject(ref.getGroupId(), ref.getArtifactId(),
+              ref.getVersion());
+          if(depFacade != null) {
+            references.add(depFacade.getProject());
           }
-          if(mavenProjectFacade.getParentArtifactKey() != null) {
-            MavenProjectFacade depFacade = projectManager.getMavenProject(
-                mavenProjectFacade.getParentArtifactKey().getGroupId(),
-                mavenProjectFacade.getParentArtifactKey().getArtifactId(),
-                mavenProjectFacade.getParentArtifactKey().getVersion());
-            if(depFacade != null) {
-              references.add(depFacade.getProject());
-            }
-          }
-          project.getDescription().setDynamicReferences(references.toArray(new IProject[references.size()]));
         }
+        if(mavenProjectFacade.getParentArtifactKey() != null) {
+          MavenProjectFacade depFacade = projectManager.getMavenProject(
+              mavenProjectFacade.getParentArtifactKey().getGroupId(),
+              mavenProjectFacade.getParentArtifactKey().getArtifactId(),
+              mavenProjectFacade.getParentArtifactKey().getVersion());
+          if(depFacade != null) {
+            references.add(depFacade.getProject());
+          }
+        }
+        IBuildConfiguration[] confRefs = new IBuildConfiguration[references.size()];
+        for(int i = 0; i < confRefs.length; ++i) {
+          confRefs[i] = new BuildConfiguration(references.get(i));
+        }
+        IProjectDescription prjDescription = project.getDescription();
+        prjDescription.setBuildConfigReferences(IBuildConfiguration.DEFAULT_CONFIG_NAME, confRefs);
+        project.setDescription(prjDescription, IResource.FORCE | IResource.AVOID_NATURE_CONFIG, monitor);
 
         return null;
       }
@@ -1058,6 +1071,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
       log.error("Can't create project " + projectName + " at Workspace folder");
       return null;
     }
+
 
     if(projectParent.equals(root.getLocation().toFile().getAbsolutePath())) {
       project.create(monitor);
