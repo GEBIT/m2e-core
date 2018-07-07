@@ -19,6 +19,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.ResourcesPlugin;
+
+import org.eclipse.m2e.core.internal.MavenPluginActivator;
+import org.eclipse.m2e.core.internal.project.registry.ProjectRegistryManager;
+import org.eclipse.m2e.core.project.IMavenProjectFacade;
+
 
 /**
  * @since 1.6
@@ -26,6 +34,8 @@ import java.util.Set;
 class BuildResultCollector implements IIncrementalBuildFramework.BuildResultCollector {
 
   private String currentParticipantId;
+
+  final ProjectRegistryManager projectManager = MavenPluginActivator.getDefault().getMavenProjectManagerImpl();
 
   public static class Message {
     public final File file;
@@ -69,6 +79,19 @@ class BuildResultCollector implements IIncrementalBuildFramework.BuildResultColl
 
   @Override
   public void refresh(File file) {
+    for(IFile resource : ResourcesPlugin.getWorkspace().getRoot().findFilesForLocationURI(file.toURI())) {
+      IMavenProjectFacade facade = projectManager.getProject(resource.getProject());
+      if(facade != null) {
+        if(facade.getBuildOutputPath().isPrefixOf(resource.getFullPath())) {
+          return;
+        }
+      }
+
+      if(resource.isDerived(IResource.CHECK_ANCESTORS)) {
+        // no need to refresh then
+        return;
+      }
+    }
     refresh.add(file);
   }
 
