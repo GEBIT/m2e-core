@@ -13,6 +13,7 @@ package org.eclipse.m2e.core.internal.project;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -34,7 +35,6 @@ import org.slf4j.LoggerFactory;
 import org.eclipse.core.internal.resources.Project;
 import org.eclipse.core.internal.resources.ProjectInfo;
 import org.eclipse.core.internal.resources.Workspace;
-import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFile;
@@ -45,6 +45,7 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.IResourceChangeListener;
 import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.IWorkspace.ProjectOrder;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -106,9 +107,10 @@ import org.eclipse.m2e.core.project.configurator.ProjectConfigurationRequest;
 
 /**
  * import Maven projects update project configuration from Maven enable Maven nature create new project
- * 
+ *
  * @author igor
  */
+@SuppressWarnings("restriction")
 public class ProjectConfigurationManager implements IProjectConfigurationManager, IMavenProjectChangedListener,
     IResourceChangeListener {
   /*package*/static final Logger log = LoggerFactory.getLogger(ProjectConfigurationManager.class);
@@ -130,6 +132,19 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
   final IMaven maven;
 
   final IMavenConfiguration mavenConfiguration;
+
+  private static Method Workspace_flushBuildOrder;
+
+  static {
+    try {
+      Workspace_flushBuildOrder = Workspace.class.getDeclaredMethod("flushBuildOrder");
+      Workspace_flushBuildOrder.setAccessible(true);
+
+    } catch(NoSuchMethodException | SecurityException ex) {
+      log.error(ex.getMessage(), ex);
+      throw new IllegalAccessError("Failed to reflect Workspace.flushBuildOrder()");
+    }
+  }
 
   public ProjectConfigurationManager(IMaven maven, ProjectRegistryManager projectManager,
       MavenModelManager mavenModelManager, IMavenMarkerManager mavenMarkerManager,
@@ -271,7 +286,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     List<MavenProjectChangedEvent> events = projectManager.refresh(pomFiles, false, progress.newChild(75));
 
-    //Creating maven facades 
+    //Creating maven facades
     SubMonitor subProgress = SubMonitor.convert(progress.newChild(5), projects.size() * 100);
     List<IMavenProjectFacade> facades = new ArrayList<IMavenProjectFacade>(projects.size());
     for(IProject project : projects) {
@@ -286,7 +301,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     projectManager.notifyProjectChangeListeners(events, monitor);
 
-    //MNGECLIPSE-1028 : Sort projects by build order here, 
+    //MNGECLIPSE-1028 : Sort projects by build order here,
     //as dependent projects need to be configured before depending projects (in WTP integration for ex.)
     sortProjects(facades, progress.newChild(5));
     //Then, perform detailed project configuration
@@ -340,7 +355,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
    * Returns project name to update status map.
    * <p/>
    * TODO promote to API
-   * 
+   *
    * @since 1.1
    */
   public Map<String, IStatus> updateProjectConfiguration(final MavenUpdateRequest request,
@@ -352,7 +367,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
    * Returns project name to update status map.
    * <p/>
    * TODO promote to API. TODO decide if workspace or other lock is required during execution of this method.
-   * 
+   *
    * @since 1.4
    */
   public Map<String, IStatus> updateProjectConfiguration(final MavenUpdateRequest request,
@@ -408,6 +423,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
         try {
           project.refreshLocal(IResource.DEPTH_INFINITE, submonitorRefreshLocal.newChild(1,
               SubProgressMonitor.SUPPRESS_SUBTASK_LABEL));
+
           pomsToRefresh.add(pom);
         } catch(CoreException ex) {
           updateStatus.put(project.getName(), ex.getStatus());
@@ -418,12 +434,17 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     }
 
     // sort projects by the current project dependencies we know
+    IProject[] sortedProjects = new IProject[pomsToRefresh.size()];
+    for(int i = 0; i < pomsToRefresh.size(); ++i) {
+      sortedProjects[i] = pomsToRefresh.get(i).getProject();
+    }
+    ProjectOrder projectOrder = ResourcesPlugin.getWorkspace().computeProjectOrder(sortedProjects);
     List<IFile> sortedPoms = new ArrayList<>();
-    outer: for(IBuildConfiguration buildConfig : ((Workspace) ResourcesPlugin.getWorkspace()).getBuildOrder()) {
+    outer: for(IProject buildProject : projectOrder.projects) {
       // find possible match
       for(ListIterator<IFile> it = pomsToRefresh.listIterator(); it.hasNext();) {
         IFile pom = it.next();
-        if(pom.getProject().equals(buildConfig.getProject())) {
+        if(pom.getProject().equals(buildProject)) {
           sortedPoms.add(pom);
           it.remove();
           continue outer;
@@ -481,7 +502,20 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
           updateStatus.put(facade.getProject().getName(), ex.getStatus());
         }
       }
+      // refresh build order
+      for(IFile pom : pomFiles) {
+    	// clear cached dynamic references for all projects
+        IProject project = pom.getProject();
+        project.clearCachedDynamicReferences();
+      }
+      try {
+        // there is no API for this....
+        Workspace_flushBuildOrder.invoke(ResourcesPlugin.getWorkspace());
+      } catch(Exception ex) {
+        log.error(ex.getMessage(), ex);
+      }
     }
+
 
     // rebuild
     if(cleanProjects) {
@@ -621,7 +655,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     project.setDescription(description, monitor);
 
-    // tell the projectManager to remove the project facade and notify MavenProjectChangeListeners 
+    // tell the projectManager to remove the project facade and notify MavenProjectChangeListeners
     MavenPlugin.getMavenProjectRegistry().refresh(
         new MavenUpdateRequest(project, mavenConfiguration.isOffline(), false));
   }
@@ -776,7 +810,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Helper method which creates a folder and, recursively, all its parent folders.
-   * 
+   *
    * @param folder The folder to create.
    * @param derived true if folder should be marked as derived
    * @throws CoreException if creating the given <code>folder</code> or any of its parents fails.
@@ -799,7 +833,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Creates project structure using Archetype and then imports created project(s)
-   * 
+   *
    * @deprecated use
    *             {@link #createArchetypeProjects(IPath, Archetype, String, String, String, String, Properties, ProjectImportConfiguration, IProgressMonitor)}
    */
@@ -813,7 +847,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Creates project structure using Archetype and then imports created project(s)
-   * 
+   *
    * @return an unmodifiable list of created projects.
    * @since 1.1
    */
@@ -826,7 +860,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Creates project structure using Archetype and then imports created project(s)
-   * 
+   *
    * @return an unmodifiable list of created projects.
    * @since 1.8
    */
@@ -934,7 +968,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
    */
   private Artifact resolveArchetype(Archetype a, IProgressMonitor monitor) throws CoreException {
     ArrayList<ArtifactRepository> repos = new ArrayList<ArtifactRepository>();
-    repos.addAll(maven.getArtifactRepositories()); // see org.apache.maven.archetype.downloader.DefaultDownloader#download    
+    repos.addAll(maven.getArtifactRepositories()); // see org.apache.maven.archetype.downloader.DefaultDownloader#download
 
     //MNGECLIPSE-1399 use archetype repository too, not just the default ones
     String artifactRemoteRepository = a.getRepository();
@@ -1034,6 +1068,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
       log.error("Can't create project " + projectName + " at Workspace folder");
       return null;
     }
+
 
     if(projectParent.equals(root.getLocation().toFile().getAbsolutePath())) {
       project.create(monitor);
