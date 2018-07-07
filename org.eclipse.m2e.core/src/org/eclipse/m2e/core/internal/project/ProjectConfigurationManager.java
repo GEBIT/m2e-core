@@ -31,6 +31,8 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.eclipse.core.internal.resources.Project;
+import org.eclipse.core.internal.resources.ProjectInfo;
 import org.eclipse.core.internal.resources.Workspace;
 import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.ICommand;
@@ -1063,6 +1065,13 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
       IProjectDescription description = workspace.newProjectDescription(projectName);
       description.setLocation(new Path(projectDir.getAbsolutePath()));
       project.create(description, monitor);
+    }
+
+    ProjectInfo prjInfo = (ProjectInfo) ((Workspace) workspace).getResourceInfo(project.getFullPath(), false, true);
+    if(!prjInfo.getDescription().getName().equals(projectName)) {
+      // update stale project name
+      prjInfo.getDescription().setName(projectName);
+      ((Project) project).writeDescription(IProject.FORCE);
     }
 
     if(!project.isOpen()) {
