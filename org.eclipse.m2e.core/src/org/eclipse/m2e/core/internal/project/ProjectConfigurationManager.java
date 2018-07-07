@@ -71,6 +71,7 @@ import org.apache.maven.model.Parent;
 import org.apache.maven.project.MavenProject;
 
 import org.eclipse.m2e.core.MavenPlugin;
+import org.eclipse.m2e.core.embedder.ArtifactRef;
 import org.eclipse.m2e.core.embedder.ICallable;
 import org.eclipse.m2e.core.embedder.IMaven;
 import org.eclipse.m2e.core.embedder.IMavenConfiguration;
@@ -104,7 +105,7 @@ import org.eclipse.m2e.core.project.configurator.ProjectConfigurationRequest;
 
 /**
  * import Maven projects update project configuration from Maven enable Maven nature create new project
- * 
+ *
  * @author igor
  */
 public class ProjectConfigurationManager implements IProjectConfigurationManager, IMavenProjectChangedListener,
@@ -269,7 +270,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     List<MavenProjectChangedEvent> events = projectManager.refresh(pomFiles, false, progress.newChild(75));
 
-    //Creating maven facades 
+    //Creating maven facades
     SubMonitor subProgress = SubMonitor.convert(progress.newChild(5), projects.size() * 100);
     List<IMavenProjectFacade> facades = new ArrayList<IMavenProjectFacade>(projects.size());
     for(IProject project : projects) {
@@ -284,7 +285,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     projectManager.notifyProjectChangeListeners(events, monitor);
 
-    //MNGECLIPSE-1028 : Sort projects by build order here, 
+    //MNGECLIPSE-1028 : Sort projects by build order here,
     //as dependent projects need to be configured before depending projects (in WTP integration for ex.)
     sortProjects(facades, progress.newChild(5));
     //Then, perform detailed project configuration
@@ -338,7 +339,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
    * Returns project name to update status map.
    * <p/>
    * TODO promote to API
-   * 
+   *
    * @since 1.1
    */
   public Map<String, IStatus> updateProjectConfiguration(final MavenUpdateRequest request,
@@ -350,7 +351,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
    * Returns project name to update status map.
    * <p/>
    * TODO promote to API. TODO decide if workspace or other lock is required during execution of this method.
-   * 
+   *
    * @since 1.4
    */
   public Map<String, IStatus> updateProjectConfiguration(final MavenUpdateRequest request,
@@ -550,6 +551,30 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
         } else {
           log.debug("LifecycleMapping is null for project {}", mavenProjectFacade.toString()); //$NON-NLS-1$
         }
+
+        // update dynamic references
+        List<IProject> references = new ArrayList<>();
+        if(!project.hasNature("org.eclipse.jdt.core.javanature")) {
+          // we can only do this for non-Java projects. Java project use dynamic references from the classpath
+          for(ArtifactRef ref : mavenProjectFacade.getMavenProjectArtifacts()) {
+            MavenProjectFacade depFacade = projectManager.getMavenProject(ref.getGroupId(), ref.getArtifactId(),
+                ref.getVersion());
+            if(depFacade != null) {
+              references.add(depFacade.getProject());
+            }
+          }
+          if(mavenProjectFacade.getParentArtifactKey() != null) {
+            MavenProjectFacade depFacade = projectManager.getMavenProject(
+                mavenProjectFacade.getParentArtifactKey().getGroupId(),
+                mavenProjectFacade.getParentArtifactKey().getArtifactId(),
+                mavenProjectFacade.getParentArtifactKey().getVersion());
+            if(depFacade != null) {
+              references.add(depFacade.getProject());
+            }
+          }
+          project.getDescription().setDynamicReferences(references.toArray(new IProject[references.size()]));
+        }
+
         return null;
       }
     }, monitor);
@@ -619,7 +644,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
     project.setDescription(description, monitor);
 
-    // tell the projectManager to remove the project facade and notify MavenProjectChangeListeners 
+    // tell the projectManager to remove the project facade and notify MavenProjectChangeListeners
     MavenPlugin.getMavenProjectRegistry().refresh(
         new MavenUpdateRequest(project, mavenConfiguration.isOffline(), false));
   }
@@ -773,7 +798,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Helper method which creates a folder and, recursively, all its parent folders.
-   * 
+   *
    * @param folder The folder to create.
    * @param derived true if folder should be marked as derived
    * @throws CoreException if creating the given <code>folder</code> or any of its parents fails.
@@ -796,7 +821,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Creates project structure using Archetype and then imports created project(s)
-   * 
+   *
    * @deprecated use
    *             {@link #createArchetypeProjects(IPath, Archetype, String, String, String, String, Properties, ProjectImportConfiguration, IProgressMonitor)}
    */
@@ -810,7 +835,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Creates project structure using Archetype and then imports created project(s)
-   * 
+   *
    * @return an unmodifiable list of created projects.
    * @since 1.1
    */
@@ -823,7 +848,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
 
   /**
    * Creates project structure using Archetype and then imports created project(s)
-   * 
+   *
    * @return an unmodifiable list of created projects.
    * @since 1.8
    */
@@ -931,7 +956,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
    */
   private Artifact resolveArchetype(Archetype a, IProgressMonitor monitor) throws CoreException {
     ArrayList<ArtifactRepository> repos = new ArrayList<ArtifactRepository>();
-    repos.addAll(maven.getArtifactRepositories()); // see org.apache.maven.archetype.downloader.DefaultDownloader#download    
+    repos.addAll(maven.getArtifactRepositories()); // see org.apache.maven.archetype.downloader.DefaultDownloader#download
 
     //MNGECLIPSE-1399 use archetype repository too, not just the default ones
     String artifactRemoteRepository = a.getRepository();
