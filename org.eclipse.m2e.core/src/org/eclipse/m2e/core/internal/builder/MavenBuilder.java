@@ -238,11 +238,29 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
    * @return
    */
   private boolean isBuildNeeded(int buildKind, IProgressMonitor monitor) throws CoreException {
+    IProject project = getProject();
     if(buildKind == FULL_BUILD || buildKind == CLEAN_BUILD) {
+      project.setPersistentProperty(PPROP_FORCE_BUILD, null);
       return true;
     }
 
-    IProject project = getProject();
+    for(IMarker problem : project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
+      log.info(
+          "Marker " + problem.getType() + " severity " + problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO));
+      if(problem.getType().startsWith("org.eclipse.jdt")) {
+        // check for CAT_BUILDPATH, need to wait for other project first
+        if(problem.getAttribute("categoryId", 0) == 10) {
+          // cannot build due to other project -> ignore
+          return false;
+        }
+        if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
+          // force build to give a chance to correct errors
+          log.error("Build due to marker " + problem.getType());
+          return true;
+        }
+      }
+    }
+
     if(project.getPersistentProperty(PPROP_FORCE_BUILD) != null) {
       project.setPersistentProperty(PPROP_FORCE_BUILD, null);
       return true;
@@ -250,16 +268,6 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     IResourceDelta projectDelta = getDelta(project);
     if(projectDelta == null) {
       return true;
-    }
-
-    for(IMarker problem : project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
-      log.info(
-          "Marker " + problem.getType() + " severity " + problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO));
-      if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
-        // force build to give a chance to correct errors
-        log.error("Build due to marker " + problem.getType());
-        return true;
-      }
     }
 
     if(projectDelta.getAffectedChildren().length == 0) {
@@ -506,4 +514,5 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
       return new ArrayList<BuildDebugHook>(debugHooks);
     }
   }
+
 }
