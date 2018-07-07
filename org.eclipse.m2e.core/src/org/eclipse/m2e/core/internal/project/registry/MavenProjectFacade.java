@@ -70,6 +70,8 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
   // cached values from mavenProject
   private final ArtifactKey artifactKey;
 
+  private final ArtifactKey parentArtifactKey;
+
   private final List<String> modules;
 
   private final String packaging;
@@ -93,7 +95,7 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
   private final Set<ArtifactRepositoryRef> pluginArtifactRepositories;
 
   // TODO make final
-  private Set<ArtifactRef> artifacts; // dependencies are resolved after facade instance is created 
+  private Set<ArtifactRef> artifacts; // dependencies are resolved after facade instance is created
 
   // lifecycle mapping
 
@@ -114,6 +116,8 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
     this.resolverConfiguration = resolverConfiguration;
 
     this.artifactKey = new ArtifactKey(mavenProject.getArtifact());
+    this.parentArtifactKey = mavenProject.getParent() != null ? new ArtifactKey(mavenProject.getParent().getArtifact())
+        : null;
     this.packaging = mavenProject.getPackaging();
     this.modules = mavenProject.getModules();
 
@@ -165,6 +169,7 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
     this.resolverConfiguration = other.resolverConfiguration;
 
     this.artifactKey = other.artifactKey;
+    this.parentArtifactKey = other.parentArtifactKey;
     this.packaging = other.packaging;
     this.modules = new ArrayList<String>(other.modules);
 
@@ -214,7 +219,7 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
 
   /**
    * Returns project resource for given file system location or null the location is outside of project.
-   * 
+   *
    * @param resourceLocation absolute file system location
    * @return IPath the full, absolute workspace path resourceLocation
    */
@@ -315,10 +320,10 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
   private static long getModificationStamp(IFile file) {
     /*
      * this implementation misses update in the following scenario
-     * 
+     *
      * 1. two files, A and B, with different content were created with same localTimeStamp
      * 2. original A was deleted and B moved to A
-     * 
+     *
      * See also https://bugs.eclipse.org/bugs/show_bug.cgi?id=160728
      */
     return file.getLocalTimeStamp() + file.getModificationStamp();
@@ -326,6 +331,10 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
 
   public ArtifactKey getArtifactKey() {
     return artifactKey;
+  }
+
+  public ArtifactKey getParentArtifactKey() {
+    return parentArtifactKey;
   }
 
   public synchronized void setSessionProperty(String key, Object value) {
