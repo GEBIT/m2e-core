@@ -175,7 +175,9 @@ public class MavenBuilderImpl {
     }
 
     // Refresh files modified by build participants/maven plugins
-    refreshResources(project, participantResults.getFiles(), monitor);
+    if(!participantResults.getFiles().isEmpty()) {
+      refreshResources(project, participantResults.getFiles(), monitor);
+    }
 
     // Process errors and warnings
     MavenExecutionResult result = session.getResult();
