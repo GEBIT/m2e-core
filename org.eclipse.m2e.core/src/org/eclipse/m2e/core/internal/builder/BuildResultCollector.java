@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 
 import org.eclipse.m2e.core.internal.MavenPluginActivator;
@@ -83,11 +82,6 @@ class BuildResultCollector implements IIncrementalBuildFramework.BuildResultColl
       IMavenProjectFacade facade = projectManager.getProject(resource.getProject());
       if(facade != null && facade.getOutputLocation() != null
           && facade.getOutputLocation().isPrefixOf(resource.getFullPath())) {
-        return;
-      }
-
-      if(resource.isDerived(IResource.CHECK_ANCESTORS)) {
-        // no need to refresh then
         return;
       }
     }
