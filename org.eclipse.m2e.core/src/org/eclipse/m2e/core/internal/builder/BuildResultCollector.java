@@ -81,10 +81,9 @@ class BuildResultCollector implements IIncrementalBuildFramework.BuildResultColl
   public void refresh(File file) {
     for(IFile resource : ResourcesPlugin.getWorkspace().getRoot().findFilesForLocationURI(file.toURI())) {
       IMavenProjectFacade facade = projectManager.getProject(resource.getProject());
-      if(facade != null) {
-        if(facade.getBuildOutputPath().isPrefixOf(resource.getFullPath())) {
-          return;
-        }
+      if(facade != null && facade.getOutputLocation() != null
+          && facade.getOutputLocation().isPrefixOf(resource.getFullPath())) {
+        return;
       }
 
       if(resource.isDerived(IResource.CHECK_ANCESTORS)) {
