@@ -30,13 +30,18 @@ public class DynamicMavenProjectReferences implements IDynamicReferenceProvider 
     IMavenProjectFacade facade = projectManager.getProject(input);
 
     List<IProject> references = new ArrayList<>();
-    if(facade != null || !input.hasNature("org.eclipse.jdt.core.javanature")) {
-      for (ArtifactRef ref : facade.getMavenProjectArtifacts()) {
-        MavenProjectFacade depFacade = projectManager.getMavenProject(ref.getGroupId(), ref.getArtifactId(),
-            ref.getVersion());
-        if(depFacade != null) {
-          references.add(depFacade.getProject());
+    if(facade != null) {
+      if(facade.getMavenProjectArtifacts() != null) {
+        for(ArtifactRef ref : facade.getMavenProjectArtifacts()) {
+          MavenProjectFacade depFacade = projectManager.getMavenProject(ref.getGroupId(), ref.getArtifactId(),
+              ref.getVersion());
+          if(depFacade != null) {
+            references.add(depFacade.getProject());
+          }
         }
+      } else {
+        // not ready yet
+        log.debug("No artifacts for project " + input.getName());
       }
       if(facade.getParentArtifactKey() != null) {
         MavenProjectFacade depFacade = projectManager.getMavenProject(facade.getParentArtifactKey().getGroupId(),
