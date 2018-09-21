@@ -10,4 +10,5 @@
       <category name="m2e"/>
    </feature>
    <category-def name="m2e" label="Maven Integration for Eclipse"/>
+   <repository-reference location="http://download.eclipse.org/tools/orbit/R-builds/R20170307180635/repository" enabled="true" />
 </site>
