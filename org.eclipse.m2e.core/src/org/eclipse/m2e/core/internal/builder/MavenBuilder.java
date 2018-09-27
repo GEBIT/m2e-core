@@ -279,6 +279,10 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
         // if the delta is from a parent in which new sources were added (generated)
         return false;
       }
+      if(projectDelta.getFlags() == 0 || (projectDelta.getFlags() & IResourceDelta.DESCRIPTION) != 0) {
+        // affects project description, i.e. static project dependencies -> ignore
+        return false;
+      }
       return true;
     }
 
