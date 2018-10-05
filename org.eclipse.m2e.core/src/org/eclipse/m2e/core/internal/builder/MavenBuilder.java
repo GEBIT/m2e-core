@@ -221,7 +221,14 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     log.debug("Building project {}", getProject().getName()); //$NON-NLS-1$
     final long start = System.currentTimeMillis();
     try {
-      if(isBuildNeeded(kind, monitor)) {
+      boolean needsBuild = false;
+      try {
+        needsBuild = isBuildNeeded(kind, monitor);
+      } catch(CoreException ex) {
+        methodBuild.addErrorMarker(getProject(), ex);
+        throw ex;
+      }
+      if(needsBuild) { // this is outside the above try-catch, since the build handles error markers itself
         return methodBuild.execute(kind, args, monitor);
       }
       log.debug("Not building project {} because the resource changes only occurred in its output or ignored folders",
