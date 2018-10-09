@@ -22,6 +22,12 @@ import org.eclipse.jdt.core.JavaCore;
  * builder will add an error marker to the project and cancel the build. This prevents the java builder from building
  * the project into the default bin/-folder and thus preventing other tools like integrity or compasscript from parsing
  * files in the bin-folder (which is not configured to be an output folder, so cannot be ignored).
+ *
+ * <pre>
+ * BIG NOTE:
+ * Unfortunately this has the side effect that not only the currently building project will be aborted, but the entire
+ * workspace build! Use the de.gebit.maven.m2e plugin to visualize such cases.
+ * </pre>
  */
 public class BuildPreventer extends IncrementalProjectBuilder {
 
