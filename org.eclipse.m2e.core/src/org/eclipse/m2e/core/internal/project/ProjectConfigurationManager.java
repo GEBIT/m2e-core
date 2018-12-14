@@ -14,6 +14,7 @@ package org.eclipse.m2e.core.internal.project;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -587,9 +588,11 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
           confRefs[i] = new BuildConfiguration(references.get(i));
         }
         IProjectDescription prjDescription = project.getDescription();
-        prjDescription.setBuildConfigReferences(IBuildConfiguration.DEFAULT_CONFIG_NAME, confRefs);
-        project.setDescription(prjDescription, IResource.FORCE | IResource.AVOID_NATURE_CONFIG, monitor);
-
+        IBuildConfiguration[] buildConfigReferences = prjDescription.getBuildConfigReferences(IBuildConfiguration.DEFAULT_CONFIG_NAME);
+        if(buildConfigReferences == null || !Arrays.equals(buildConfigReferences, confRefs)) {
+          prjDescription.setBuildConfigReferences(IBuildConfiguration.DEFAULT_CONFIG_NAME, confRefs);
+          project.setDescription(prjDescription, IResource.FORCE | IResource.AVOID_NATURE_CONFIG, monitor);
+        }
         return null;
       }
     }, monitor);
