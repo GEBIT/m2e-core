@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -421,7 +422,9 @@ public abstract class AbstractJavaProjectConfigurator extends AbstractProjectCon
 
       // Set folder encoding (null = platform/container default)
       if(sourceFolder.exists()) {
-        sourceFolder.setDefaultCharset(sourceEncoding, monitor);
+        if(!Objects.equals(sourceEncoding, sourceFolder.getDefaultCharset())) {
+          sourceFolder.setDefaultCharset(sourceEncoding, monitor);
+        }
       }
 
       IClasspathEntryDescriptor enclosing = getEnclosingEntryDescriptor(classpath, sourceFolder.getFullPath());
@@ -503,7 +506,9 @@ public abstract class AbstractJavaProjectConfigurator extends AbstractProjectCon
 
           // Set folder encoding (null = platform default)
           IFolder resourceFolder = project.getFolder(relativePath);
-          resourceFolder.setDefaultCharset(resourceEncoding, monitor);
+          if(!Objects.equals(resourceEncoding, resourceFolder.getDefaultCharset())) {
+            resourceFolder.setDefaultCharset(resourceEncoding, monitor);
+          }
 
         } else {
           log.info("Not adding resources folder " + resourceDirectory.getAbsolutePath());

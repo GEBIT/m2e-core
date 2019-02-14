@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 
@@ -545,7 +546,9 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
     Properties mavenProperties = mavenProject.getProperties();
     String sourceEncoding = mavenProperties.getProperty("project.build.sourceEncoding");
     log.debug("Setting encoding for project {}: {}", project.getName(), sourceEncoding); //$NON-NLS-1$
-    project.setDefaultCharset(sourceEncoding, monitor);
+    if(!Objects.equals(sourceEncoding, project.getDefaultCharset())) {
+      project.setDefaultCharset(sourceEncoding, monitor);
+    }
 
     MavenExecutionContext executionContext = projectManager.createExecutionContext(mavenProjectFacade.getPom(),
         mavenProjectFacade.getResolverConfiguration());
