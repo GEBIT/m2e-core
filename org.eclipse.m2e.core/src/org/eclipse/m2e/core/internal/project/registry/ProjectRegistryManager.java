@@ -773,6 +773,8 @@ public class ProjectRegistryManager {
               if(mavenProject != null && mavenProject.getArtifact() != null) {
                 MavenProjectFacade mavenProjectFacade = new MavenProjectFacade(ProjectRegistryManager.this, pom, mavenProject,
                           resolverConfiguration);
+                resolverConfiguration.setProperties(mavenProject.getProjectBuildingRequest().getUserProperties());
+                ResolverConfigurationIO.saveResolverConfiguration(pom.getProject(), resolverConfiguration);
                 putMavenProject(mavenProjectFacade, mavenProject); // maintain maven project cache
                 facades.put(pom, mavenProjectFacade);
               }

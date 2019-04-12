@@ -13,9 +13,9 @@ package org.eclipse.m2e.core.internal;
 
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import org.osgi.framework.Bundle;
 import org.slf4j.Logger;
@@ -29,8 +29,11 @@ import org.eclipse.core.runtime.IExtensionPoint;
 import org.eclipse.core.runtime.IExtensionRegistry;
 import org.eclipse.core.runtime.Platform;
 
+import org.apache.maven.AbstractMavenLifecycleParticipant;
+
 import org.eclipse.m2e.core.internal.archetype.ArchetypeCatalogFactory;
 import org.eclipse.m2e.core.internal.builder.IIncrementalBuildFramework;
+import org.eclipse.m2e.core.internal.project.ILifecycleParticipant;
 import org.eclipse.m2e.core.project.IMavenProjectChangedListener;
 
 
@@ -160,8 +163,8 @@ public class ExtensionReader {
     return frameworks;
   }
 
-  public static Set<String> readLifecycleParticipants() {
-    Set<String> participantHints = new HashSet<String>();
+  public static Map<String, ILifecycleParticipant> readLifecycleParticipants() {
+    Map<String, ILifecycleParticipant> lifecycleParticipants = new HashMap<>();
 
     IExtensionRegistry registry = Platform.getExtensionRegistry();
     IExtensionPoint lifecycleParticipantsPoint = registry.getExtensionPoint(EXTENSION_LIFECYCLE_PARTICIPANTS);
@@ -169,14 +172,58 @@ public class ExtensionReader {
       IExtension[] mappingsExtensions = lifecycleParticipantsPoint.getExtensions();
       for(IExtension extension : mappingsExtensions) {
         IConfigurationElement[] elements = extension.getConfigurationElements();
+        String hint = null;
+        AbstractMavenLifecycleParticipant participant = null;
         for(IConfigurationElement element : elements) {
           if(element.getName().equals("participant")) {
-            participantHints.add(element.getAttribute("hint"));
+            hint = element.getAttribute("hint");
+            if(element.getAttribute("class") != null) {
+              try {
+                participant = (AbstractMavenLifecycleParticipant) element.createExecutableExtension("class"); //$NON-NLS-1$
+              } catch(CoreException ex) {
+                log.error(ex.getMessage(), ex);
+              }
+            }
           }
+        }
+        if(hint != null) {
+          LifecycleParticipant lifecycleParticipant = new LifecycleParticipant(hint);
+          if(participant != null) {
+            lifecycleParticipant.setParticipant(participant);
+          }
+          lifecycleParticipants.put(hint, lifecycleParticipant);
         }
       }
     }
 
-    return participantHints;
+    return lifecycleParticipants;
+  }
+
+  private static class LifecycleParticipant implements ILifecycleParticipant {
+    private String hint;
+
+    private AbstractMavenLifecycleParticipant participant;
+
+    LifecycleParticipant(String hint) {
+      this.hint = hint;
+    }
+
+    public void setParticipant(AbstractMavenLifecycleParticipant participant) {
+      this.participant = participant;
+    }
+
+    /* (non-Javadoc)
+     * @see org.eclipse.m2e.core.internal.project.ILifecycleParticipant#getHint()
+     */
+    public String getHint() {
+      return hint;
+    }
+
+    /* (non-Javadoc)
+    * @see org.eclipse.m2e.core.internal.project.ILifecycleParticipant#getParticipant()
+    */
+    public AbstractMavenLifecycleParticipant getParticipant() {
+      return participant;
+    }
   }
 }
