@@ -64,6 +64,7 @@ import org.eclipse.osgi.util.NLS;
 import org.codehaus.plexus.ContainerConfiguration;
 import org.codehaus.plexus.DefaultContainerConfiguration;
 import org.codehaus.plexus.DefaultPlexusContainer;
+import org.codehaus.plexus.MutablePlexusContainer;
 import org.codehaus.plexus.PlexusConstants;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.PlexusContainerException;
@@ -75,12 +76,14 @@ import org.codehaus.plexus.component.configurator.converters.ConfigurationConver
 import org.codehaus.plexus.component.configurator.converters.lookup.ConverterLookup;
 import org.codehaus.plexus.component.configurator.converters.lookup.DefaultConverterLookup;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluator;
+import org.codehaus.plexus.component.repository.ComponentDescriptor;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.codehaus.plexus.configuration.PlexusConfiguration;
 import org.codehaus.plexus.configuration.xml.XmlPlexusConfiguration;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.dag.CycleDetectedException;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 import org.apache.maven.AbstractMavenLifecycleParticipant;
 import org.apache.maven.DefaultMaven;
@@ -91,6 +94,9 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.cli.configuration.SettingsXmlConfigurationProcessor;
+import org.apache.maven.cli.internal.BootstrapCoreExtensionManager;
+import org.apache.maven.cli.internal.extension.model.CoreExtension;
+import org.apache.maven.cli.internal.extension.model.io.xpp3.CoreExtensionsXpp3Reader;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenExecutionRequest;
@@ -146,6 +152,7 @@ import org.apache.maven.project.ProjectBuildingResult;
 import org.apache.maven.project.ProjectSorter;
 import org.apache.maven.properties.internal.EnvironmentUtils;
 import org.apache.maven.repository.RepositorySystem;
+import org.apache.maven.session.scope.internal.SessionScopeModule;
 import org.apache.maven.settings.Mirror;
 import org.apache.maven.settings.Proxy;
 import org.apache.maven.settings.Server;
@@ -179,6 +186,7 @@ import org.eclipse.m2e.core.internal.MavenPluginActivator;
 import org.eclipse.m2e.core.internal.Messages;
 import org.eclipse.m2e.core.internal.NoSuchComponentException;
 import org.eclipse.m2e.core.internal.preferences.MavenPreferenceConstants;
+import org.eclipse.m2e.core.internal.project.ILifecycleParticipant;
 import org.eclipse.m2e.core.internal.project.registry.ProjectRegistryManager;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
 
@@ -191,6 +199,12 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
    */
   public static final String MAVEN_CORE_REALM_ID = "plexus.core"; //$NON-NLS-1$
 
+  private static final String MVN_PRIVATE_FOLDER = ".mvn";
+
+  private static final String POM_XML = "pom.xml";
+
+  private static final String EXTENSIONS_FILENAME = MVN_PRIVATE_FOLDER + "/extensions.xml";
+
   private DefaultPlexusContainer plexus;
 
   private final IMavenConfiguration mavenConfiguration;
@@ -201,7 +215,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
   private final ArrayList<ILocalRepositoryListener> localRepositoryListeners = new ArrayList<ILocalRepositoryListener>();
 
-  private final Set<String> lifecycleParticipants;
+  private final Map<String, ILifecycleParticipant> lifecycleParticipants;
 
 
   /**
@@ -218,6 +232,9 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   private Object repositoryCacheMonitor = new Object();
 
   private RepositoryCache sharedRepositoryCache = createRepositoryCache();
+
+  private Map<String, List<CoreExtensionDescriptor>> coreExtensionDescriptors = Collections
+      .synchronizedMap(new HashMap<>());
 
   public MavenImpl(IMavenConfiguration mavenConfiguration) {
     this.mavenConfiguration = mavenConfiguration;
@@ -618,8 +635,51 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   public MavenProject readProject(final File pomFile, IProgressMonitor monitor) throws CoreException {
     return context().execute((context, pm) -> {
         MavenExecutionRequest request = DefaultMavenExecutionRequest.copy(context.getExecutionRequest());
+        ClassRealm extRealm = null;
         try {
           lookup(MavenExecutionRequestPopulator.class).populateDefaults(request);
+
+          try {
+            List<AbstractMavenLifecycleParticipant> coreExtensionImpls = new ArrayList<>();
+            List<CoreExtension> coreExtensions = readCoreExtensionsDescriptor(pomFile);
+            for (CoreExtension extension : coreExtensions) {
+              synchronized(coreExtensionDescriptors) {
+                List<CoreExtensionDescriptor> extensionDescriptors = coreExtensionDescriptors
+                    .get(getExtensionKey(extension));
+                if(extensionDescriptors == null) {
+                  CoreExtensionEntry coreEntry = CoreExtensionEntry
+                      .discoverFrom(getPlexusContainer().getContainerRealm());
+                  extensionDescriptors = loadCoreExtension(extension, plexus.getContainerRealm(),
+                      coreEntry.getExportedArtifacts());
+                  if(extensionDescriptors == null) {
+                    extensionDescriptors = Collections.emptyList();
+                    log.warn("Cannot create extension " + getExtensionKey(extension) + " for " + pomFile);
+                  }
+                  coreExtensionDescriptors.put(getExtensionKey(extension), extensionDescriptors);
+                }
+                for(CoreExtensionDescriptor extensionDescriptor : extensionDescriptors) {
+                  ILifecycleParticipant lifecycleParticipant = lifecycleParticipants.get(extensionDescriptor.getHint());
+                  if(lifecycleParticipant != null && lifecycleParticipant.getParticipant() != null) {
+                    coreExtensionImpls.add(lifecycleParticipant.getParticipant());
+                  } else {
+                    coreExtensionImpls.add(extensionDescriptor.getParticipant());
+                  }
+                }
+              }
+            }
+            if(!coreExtensionImpls.isEmpty()) {
+              for(AbstractMavenLifecycleParticipant coreParticipant : coreExtensionImpls) {
+                // call the core extension surrogate in m2e
+                coreParticipant.afterSessionStart(getExecutionContext().getSession());
+              }
+              request.getProjectBuildingRequest()
+                  .setUserProperties(getExecutionContext().getExecutionRequest().getUserProperties());
+            }
+          } catch(IOException | XmlPullParserException | MavenExecutionException ex) {
+            log.error(ex.getMessage(), ex);
+            throw new IllegalStateException("Failed to lookup or execute core extensions", ex);
+          }
+
           ProjectBuildingRequest configuration = request.getProjectBuildingRequest();
           configuration.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
           configuration.setRepositorySession(createRepositorySession(request));
@@ -634,6 +694,15 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
         } catch(MavenExecutionRequestPopulationException ex) {
           throw new CoreException(new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, -1,
               Messages.MavenImpl_error_read_project, ex));
+        } finally {
+          if(extRealm != null) {
+            try {
+              ((MutablePlexusContainer) getPlexusContainer()).getClassWorld().disposeRealm("maven.ext");
+            } catch(NoSuchRealmException ex) {
+              // just log it
+              log.warn(ex.getMessage(), ex);
+            }
+          }
         }
     }, monitor);
   }
@@ -659,6 +728,48 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     log.debug("Reading Maven project: {}", pomFile.getAbsoluteFile()); //$NON-NLS-1$
     MavenExecutionResult result = new DefaultMavenExecutionResult();
     try {
+
+      try {
+        // read extensions from .mvn/extensions.xml
+        List<AbstractMavenLifecycleParticipant> coreExtensionImpls = new ArrayList<>();
+        List<CoreExtension> coreExtensions = readCoreExtensionsDescriptor(pomFile);
+        for(CoreExtension extension : coreExtensions) {
+          synchronized(coreExtensionDescriptors) {
+            List<CoreExtensionDescriptor> extensionDescriptors = coreExtensionDescriptors
+                .get(getExtensionKey(extension));
+            if(extensionDescriptors == null) {
+              CoreExtensionEntry coreEntry = CoreExtensionEntry.discoverFrom(getPlexusContainer().getContainerRealm());
+              extensionDescriptors = loadCoreExtension(extension, plexus.getContainerRealm(),
+                  coreEntry.getExportedArtifacts());
+              if(extensionDescriptors == null) {
+                extensionDescriptors = Collections.emptyList();
+                log.warn("Cannot create extension " + getExtensionKey(extension) + " for " + pomFile);
+              }
+              coreExtensionDescriptors.put(getExtensionKey(extension), extensionDescriptors);
+            }
+            for(CoreExtensionDescriptor extensionDescriptor : extensionDescriptors) {
+              ILifecycleParticipant lifecycleParticipant = lifecycleParticipants.get(extensionDescriptor.getHint());
+              if(lifecycleParticipant != null && lifecycleParticipant.getParticipant() != null) {
+                coreExtensionImpls.add(lifecycleParticipant.getParticipant());
+              } else {
+                coreExtensionImpls.add(extensionDescriptor.getParticipant());
+              }
+            }
+          }
+        }
+        if(!coreExtensionImpls.isEmpty()) {
+          for(AbstractMavenLifecycleParticipant coreParticipant : coreExtensionImpls) {
+            // call the core extension surrogate in m2e
+            coreParticipant.afterSessionStart(getExecutionContext().getSession());
+          }
+          // update the request properties
+          configuration.setUserProperties(getExecutionContext().getExecutionRequest().getUserProperties());
+        }
+      } catch(IOException | XmlPullParserException | MavenExecutionException ex) {
+        log.error(ex.getMessage(), ex);
+        throw new IllegalStateException("Failed to lookup or execute core extensions", ex);
+      }
+
       configuration.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
       ProjectBuildingResult projectBuildingResult = lookup(ProjectBuilder.class)
           .build(pomFile, configuration);
@@ -680,6 +791,14 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     } catch(RuntimeException e) {
       result.addException(e);
     } finally {
+//      if(extRealm != null) {
+//        try {
+//          ((MutablePlexusContainer) getPlexusContainer()).getClassWorld().disposeRealm("maven.ext");
+//        } catch(NoSuchRealmException ex) {
+//          // just log it
+//          log.warn(ex.getMessage(), ex);
+//        }
+//      }
       log.debug("Read Maven project: {} in {} ms", pomFile.getAbsoluteFile(), System.currentTimeMillis() - start); //$NON-NLS-1$
     }
     return result;
@@ -698,7 +817,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       Collection<AbstractMavenLifecycleParticipant> participants, MavenExecutionRequest request,
       RepositorySystemSession repoSession) throws CoreException {
     MavenExecutionResult result = new DefaultMavenExecutionResult();
-    MavenSession session = new MavenSession(plexus, repoSession, request, result);
+    MavenSession session = getExecutionContext().getSession();
     ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
     try {
       session.setProjects(projects);
@@ -715,6 +834,39 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     }
   }
 
+  private Collection<AbstractMavenLifecycleParticipant> getCoreLifecycleParticipants(ClassRealm extRealm, File project)
+      throws CoreException {
+    Collection<AbstractMavenLifecycleParticipant> participants = new LinkedHashSet<AbstractMavenLifecycleParticipant>();
+
+    ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      Thread.currentThread().setContextClassLoader(extRealm);
+
+      for(Map.Entry<String, ILifecycleParticipant> participantEntry : lifecycleParticipants.entrySet()) {
+        try {
+          AbstractMavenLifecycleParticipant participant = plexus.lookup(AbstractMavenLifecycleParticipant.class,
+              participantEntry.getKey());
+          if(participant != null) {
+            if(participantEntry.getValue().getParticipant() != null) {
+              participants.add(participantEntry.getValue().getParticipant());
+            } else {
+              participants.add(participant);
+            }
+          }
+        } catch(ComponentLookupException e) {
+          // this is just silly, lookupList should return an empty list!
+          log.debug("Failed to lookup lifecycle participant {} for project {}: {}", participantEntry.getKey(),
+              project.getName(), e.getMessage());
+        }
+      }
+    } finally {
+      Thread.currentThread().setContextClassLoader(originalClassLoader);
+    }
+
+    return participants;
+  }
+
+
   private Collection<AbstractMavenLifecycleParticipant> getLifecycleParticipants(MavenProject project)
       throws CoreException {
     Collection<AbstractMavenLifecycleParticipant> participants = new LinkedHashSet<AbstractMavenLifecycleParticipant>();
@@ -725,16 +877,21 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
       if(projectRealm != null) {
         Thread.currentThread().setContextClassLoader(projectRealm);
 
-        for(String hint : lifecycleParticipants) {
+        for(Map.Entry<String, ILifecycleParticipant> participantEntry : lifecycleParticipants.entrySet()) {
           try {
-            AbstractMavenLifecycleParticipant participant = plexus.lookup(AbstractMavenLifecycleParticipant.class, hint);
+            AbstractMavenLifecycleParticipant participant = plexus.lookup(AbstractMavenLifecycleParticipant.class,
+                participantEntry.getKey());
             if(participant != null) {
-              participants.add(participant);
+              if(participantEntry.getValue().getParticipant() != null) {
+                participants.add(participantEntry.getValue().getParticipant());
+              } else {
+                participants.add(participant);
+              }
             }
           } catch(ComponentLookupException e) {
             // this is just silly, lookupList should return an empty list!
-            log.debug("Failed to lookup lifecycle participant {} for project {}: {}", hint, project.getName(),
-                e.getMessage());
+            log.debug("Failed to lookup lifecycle participant {} for project {}: {}", participantEntry.getKey(),
+                project.getName(), e.getMessage());
           }
         }
       }
@@ -1388,6 +1545,12 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   private synchronized PlexusContainer getPlexusContainer0() throws PlexusContainerException {
     if(plexus == null) {
       plexus = newPlexusContainer();
+//      try {
+//        extRealm = ((MutablePlexusContainer) getPlexusContainer()).getClassWorld().newRealm("maven.ext", null);
+//      } catch(DuplicateRealmException | CoreException ex) {
+//        log.error(ex.getMessage(), ex);
+//        throw new PlexusContainerException("Failed to create extension realm", ex);
+//      }
       plexus.setLoggerManager(new EclipseLoggerManager(mavenConfiguration));
     }
     return plexus;
@@ -1563,6 +1726,14 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
     synchronized(repositoryCacheMonitor) {
       sharedRepositoryCache = createRepositoryCache();
     }
+    synchronized(coreExtensionDescriptors) {
+      for(List<CoreExtensionDescriptor> descriptors : coreExtensionDescriptors.values()) {
+        for(CoreExtensionDescriptor descriptor : descriptors) {
+          descriptor.dispose();
+        }
+      }
+      coreExtensionDescriptors.clear();
+    }
   }
 
   /**
@@ -1570,5 +1741,184 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
    */
   private RepositoryCache createRepositoryCache() {
     return new DefaultRepositoryCache();
+  }
+
+  private String getExtensionKey(CoreExtension coreExtension) {
+    return coreExtension.getGroupId() + ": " + coreExtension.getArtifactId() + ": " + coreExtension.getVersion();
+  }
+
+  /**
+   * Spin up a new child container for the extension to analyze it. The container is then disposed right away, as the
+   * extension is not actually used from the loaded container.
+   * 
+   * @param coreExtension
+   * @param containerRealm
+   * @param providedArtifacts
+   * @return <code>null</code> if no core extension is found
+   */
+  private List<CoreExtensionDescriptor> loadCoreExtension(CoreExtension coreExtension, ClassRealm containerRealm,
+      Set<String> providedArtifacts) {
+  
+    try {
+
+      ContainerConfiguration cc = new DefaultContainerConfiguration() //
+          .setClassWorld(containerRealm.getWorld()) //
+          .setRealm(containerRealm) //
+          .setClassPathScanning(PlexusConstants.SCANNING_INDEX) //
+          .setAutoWiring(true) //
+          .setJSR250Lifecycle(true) //
+          .setName(getExtensionKey(coreExtension));
+  
+      DefaultPlexusContainer container = new DefaultPlexusContainer(cc, new AbstractModule() {
+        @Override
+        protected void configure() {
+          bind(ILoggerFactory.class).toInstance(LoggerFactory.getILoggerFactory());
+        }
+      });
+
+      try {
+        container.setLookupRealm(null);
+  
+        container.setLoggerManager(new EclipseLoggerManager(mavenConfiguration));
+  
+        container.getLoggerManager().setThresholds(org.codehaus.plexus.logging.Logger.LEVEL_INFO);
+  
+        Thread.currentThread().setContextClassLoader(container.getContainerRealm());
+  
+        MavenExecutionRequest request = createExecutionRequest(new NullProgressMonitor());
+        populateDefaults(request);
+
+        //      configure(cliRequest);
+  
+//        MavenExecutionRequest request = DefaultMavenExecutionRequest.copy(cliRequest.request);
+//  
+//        request = populateRequest(cliRequest, request);
+//  
+//        request = executionRequestPopulator.populateDefaults(request);
+  
+        BootstrapCoreExtensionManager resolver = container.lookup(BootstrapCoreExtensionManager.class);
+  
+        List<CoreExtensionEntry> loadedExtension = resolver.loadCoreExtensions(request, providedArtifacts,
+            Collections.singletonList(coreExtension));
+        if(loadedExtension.isEmpty()) {
+          return Collections.emptyList();
+        }
+        List<CoreExtensionDescriptor> extensionDescriptors = new ArrayList<>();
+        for(CoreExtensionEntry extensionEntry : loadedExtension) {
+          String hint = null;
+          ClassLoader oldCL = Thread.currentThread().getContextClassLoader();
+          try {
+            //          container.setLookupRealm();
+            Thread.currentThread().setContextClassLoader(extensionEntry.getClassRealm());
+            container.discoverComponents(extensionEntry.getClassRealm(), new SessionScopeModule(container));
+            for(ComponentDescriptor<?> componentDescriptor : container
+                .getComponentDescriptorList(AbstractMavenLifecycleParticipant.class, null)) {
+
+//            Set<String> exportedPackages = extensionEntry.getExportedPackages();
+//            ClassRealm realm = extensionEntry.getClassRealm();
+//            for(String exportedPackage : exportedPackages) {
+//              componentDescriptor.getRealm().importFrom(realm, exportedPackage);
+//            }
+//            if(exportedPackages.isEmpty()) {
+//              // sisu uses realm imports to establish component visibility
+//              extRealm.importFrom(realm, realm.getId());
+//            }
+
+              // use just the first one
+              AbstractMavenLifecycleParticipant participant = container.lookup(AbstractMavenLifecycleParticipant.class,
+                  componentDescriptor.getRoleHint());
+              extensionDescriptors.add(new CoreExtensionDescriptor(extensionEntry, componentDescriptor, participant));
+            }
+          } catch(ComponentLookupException ex) {
+            // no lifecycle participant found
+          } finally {
+            Thread.currentThread().setContextClassLoader(oldCL);
+//            plexus.getClassWorld().disposeRealm(extensionEntry.getClassRealm().getId());
+          }
+        }
+        return extensionDescriptors;
+      } finally {
+        container.dispose();
+      }
+    } catch(RuntimeException e) {
+  // runtime exceptions are most likely bugs in maven, let them bubble up to the user
+      throw e;
+    } catch(Exception e) {
+      log.warn("Failed to read extensions descriptor " + getExtensionKey(coreExtension) + ": " + e.getMessage());
+    }
+    return Collections.emptyList();
+  }
+
+  private List<CoreExtension> readCoreExtensionsDescriptor(final File pomFile)
+      throws IOException, XmlPullParserException {
+    File mvnDir = pomFile.getParentFile();
+    File extensionsFile = new File(mvnDir, EXTENSIONS_FILENAME);
+    while(!extensionsFile.exists() && new File(mvnDir.getParentFile(), POM_XML).exists()) {
+      mvnDir = mvnDir.getParentFile();
+      extensionsFile = new File(mvnDir, EXTENSIONS_FILENAME);
+    }
+    if(!extensionsFile.exists()) {
+      return Collections.emptyList();
+    }
+    CoreExtensionsXpp3Reader parser = new CoreExtensionsXpp3Reader();
+
+    try (InputStream is = new BufferedInputStream(new FileInputStream(extensionsFile))) {
+
+      return parser.read(is).getExtensions();
+    }
+  }
+
+  private static class CoreExtensionDescriptor {
+    CoreExtensionEntry entry;
+
+    String role;
+    String hint;
+
+    ClassRealm realm;
+
+    AbstractMavenLifecycleParticipant participant;
+
+    CoreExtensionDescriptor(CoreExtensionEntry entry, ComponentDescriptor<?> descriptor) {
+      this.entry = entry;
+      this.role = descriptor.getRole();
+      this.hint = descriptor.getRoleHint();
+      this.realm = entry.getClassRealm();
+    }
+
+    CoreExtensionDescriptor(CoreExtensionEntry entry, ComponentDescriptor<?> descriptor,
+        AbstractMavenLifecycleParticipant participant) {
+      this(entry, descriptor);
+      this.participant = participant;
+    }
+
+    void dispose() {
+      if(realm == null) {
+        // already gone
+        return;
+      }
+      try {
+        realm.getWorld().disposeRealm(realm.getId());
+      } catch(NoSuchRealmException ex) {
+        // how's that?
+      } finally {
+        realm = null;
+      }
+    }
+
+    public CoreExtensionEntry getEntry() {
+      return this.entry;
+    }
+
+    public String getRole() {
+      return this.role;
+    }
+
+    public String getHint() {
+      return this.hint;
+    }
+
+    public AbstractMavenLifecycleParticipant getParticipant() {
+      return this.participant;
+    }
   }
 }

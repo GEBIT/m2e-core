@@ -132,8 +132,9 @@ public class MavenExecutionContext implements IMavenExecutionContext {
       if(parent != null) {
         repositorySession.setData(parent.getRepositorySession().getData());
       }
+      ;
       final MavenExecutionResult result = new DefaultMavenExecutionResult();
-      setValue(CTX_MAVENSESSION, new MavenSession(maven.getPlexusContainer(), repositorySession, request, result));
+      setValue(CTX_MAVENSESSION, maven.createSession(request, project));
     }
 
     final LegacySupport legacySupport = maven.lookup(LegacySupport.class);

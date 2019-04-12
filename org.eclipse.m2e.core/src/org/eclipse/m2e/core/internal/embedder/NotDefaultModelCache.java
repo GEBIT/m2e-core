@@ -22,9 +22,10 @@ package org.eclipse.m2e.core.internal.embedder;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
-import org.apache.maven.model.building.ModelCache;
 import org.eclipse.aether.RepositoryCache;
 import org.eclipse.aether.RepositorySystemSession;
+
+import org.apache.maven.model.building.ModelCache;
 
 /**
  * Implementation of {@link ModelCache} which shares keys with org.apache.maven.repository.internal.DefaultModelCache
@@ -66,12 +67,12 @@ public class NotDefaultModelCache
         cache.put( session, createKey( groupId, artifactId, version, tag ), data );
     }
 
-    static Object createKey( String groupId, String artifactId, String version, String tag ) {
+  public static Object createKey(String groupId, String artifactId, String version, String tag) {
         try {
             return DefaultModelCacheKey_new.newInstance(groupId, artifactId, version, tag);
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
                 | InvocationTargetException exc) {
             throw new RuntimeException("Failed to create DefaultModelCache.Key", exc);
-		}
+        }
     }
 }

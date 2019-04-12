@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.eclipse.aether.artifact.Artifact;
-import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.util.version.GenericVersionScheme;
 import org.eclipse.aether.version.InvalidVersionSpecificationException;
@@ -36,7 +35,9 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 
 import org.apache.maven.model.Model;
+import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.LocalArtifactRepository;
+import org.apache.maven.repository.internal.MavenWorkspaceReader;
 
 import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
@@ -44,7 +45,7 @@ import org.eclipse.m2e.core.project.IMavenProjectFacade;
 import org.eclipse.m2e.core.project.IWorkspaceClassifierResolver;
 
 
-public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepository implements WorkspaceReader {
+public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepository implements MavenWorkspaceReader {
   private static final GenericVersionScheme versionScheme = new GenericVersionScheme();
 
   private final transient ProjectRegistryManager.Context context;
@@ -56,6 +57,26 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
   public EclipseWorkspaceArtifactRepository(ProjectRegistryManager.Context context) {
     this.context = context;
     this.workspaceRepository = new WorkspaceRepository("ide", getClass()); //$NON-NLS-1$
+  }
+
+  /* (non-Javadoc)
+   * @see org.apache.maven.repository.internal.MavenWorkspaceReader#findModel(org.eclipse.aether.artifact.Artifact)
+   */
+  public Model findModel(Artifact artifact) {
+    if(!context.resolverConfiguration.shouldResolveWorkspaceProjects()) {
+      return null;
+    }
+
+    IMavenProjectFacade facade = context.state.getProjectFacade(artifact.getGroupId(), artifact.getArtifactId(),
+        artifact.getBaseVersion());
+    if(facade != null) {
+      MavenProject project;
+      project = facade.getMavenProject();
+      if(project != null) {
+        return project.getModel();
+      }
+    }
+    return null;
   }
 
   protected File resolveAsEclipseProject(String groupId, String artifactId, String baseVersion, String classifier,
