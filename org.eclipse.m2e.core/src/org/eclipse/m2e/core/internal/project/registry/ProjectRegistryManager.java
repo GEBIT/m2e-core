@@ -727,6 +727,10 @@ public class ProjectRegistryManager {
         if(pom.isAccessible()) {
           mavenResult = getMaven().readMavenProject(pom.getLocation().toFile(), context.newProjectBuildingRequest());
           mavenProject = mavenResult.getProject();
+          if(mavenProject != null) {
+            resolverConfiguration.setProperties(mavenProject.getProjectBuildingRequest().getUserProperties());
+            ResolverConfigurationIO.saveResolverConfiguration(pom.getProject(), resolverConfiguration);
+          }
         }
 
         MarkerUtils.addEditorHintMarkers(markerManager, pom, mavenProject, IMavenConstants.MARKER_POM_LOADING_ID);

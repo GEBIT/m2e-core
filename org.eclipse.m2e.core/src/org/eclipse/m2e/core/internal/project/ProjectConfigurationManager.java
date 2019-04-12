@@ -376,7 +376,7 @@ public class ProjectConfigurationManager implements IProjectConfigurationManager
       final IProgressMonitor monitor) {
     try {
       // invalidate shared repository cache on explicit project update
-      maven.invalidateSharedRepositoryCache();
+      maven.invalidateCaches();
 
       return maven.execute(request.isOffline(), request.isForceDependencyUpdate(),
           new ICallable<Map<String, IStatus>>() {

@@ -338,5 +338,5 @@ public interface IMaven {
   /**
    * Invalidates the shared repository cache that is reused among sessions.
    */
-  void invalidateSharedRepositoryCache();
+  void invalidateCaches();
 }
