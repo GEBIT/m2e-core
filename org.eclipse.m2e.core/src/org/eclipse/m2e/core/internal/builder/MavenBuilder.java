@@ -76,6 +76,9 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
 
   public static QualifiedName PPROP_FORCE_BUILD = new QualifiedName(MavenBuilder.class.getName(), "forceBuild"); //$NON-NLS-1$
 
+  public static QualifiedName SPROP_ERROR_MARKER_COUNT = new QualifiedName(MavenBuilder.class.getName(),
+      "errorMarkerCount"); //$NON-NLS-1$
+
   final MavenBuilderImpl builder = new MavenBuilderImpl(this);
 
   final ProjectRegistryManager projectManager = MavenPluginActivator.getDefault().getMavenProjectManagerImpl();
@@ -251,31 +254,73 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
       return true;
     }
 
-    for(IMarker problem : project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
-      log.info(
-          "Marker " + problem.getType() + " severity " + problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO));
+    // if there are error markers (probably compilation errors), do build if a change has been triggered in a dependant
+    // project
+    IMarker[] projectMarkers = project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
+
+    // first pass: if we have a classpath error do NOT build (now)
+    for(IMarker problem : projectMarkers) {
       if(problem.getType().startsWith("org.eclipse.jdt")) {
         // check for CAT_BUILDPATH, need to wait for other project first
         if(problem.getAttribute("categoryId", 0) == 10) {
           // cannot build due to other project -> ignore
+          log.info("Marker " + problem.getType() + " severity "
+              + problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO) + " found: do not build now.");
           return false;
-        }
-        if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
-          // force build to give a chance to correct errors
-          log.error("Build due to marker " + problem.getType());
-          return true;
         }
       }
     }
 
+    // if a build has been forced, do perform it in any case
     if(project.getPersistentProperty(PPROP_FORCE_BUILD) != null) {
       project.setPersistentProperty(PPROP_FORCE_BUILD, null);
       return true;
     }
+
+    // second pass: if we have build errors that either may go away because we will generate something, or that will
+    // go away as a relevant change in a project we depend on is detected, we will give it a try now. Otherwise we
+    // will not build to prevent endless build loops.
     IResourceDelta projectDelta = getDelta(project);
-    if(projectDelta == null) {
+    int relevantMarkerCount = 0;
+    for(IMarker problem : projectMarkers) {
+      if(problem.getType().startsWith("org.eclipse.jdt")) {
+        if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
+          ++relevantMarkerCount;
+        }
+      }
+    }
+    Integer previousMarkerCount = (Integer) project.getSessionProperty(SPROP_ERROR_MARKER_COUNT);
+    project.setSessionProperty(SPROP_ERROR_MARKER_COUNT, relevantMarkerCount > 0 ? relevantMarkerCount : null);
+    if(previousMarkerCount == null && relevantMarkerCount > 0) {
+      // we had no errors before -> maybe the maven build will generate something that will make them go away
+    } else if(previousMarkerCount != null && previousMarkerCount.intValue() != relevantMarkerCount) {
+      // the number of error markers has changed: If it goes to zero we want to run maven steps to produce the correct
+      // output, and if it is changed give maven a chance to do something which will affect the error count. If it's 
+      // not affected another build will not be attempted.
       return true;
     }
+
+    if(projectDelta == null) {
+      // if there is no delta -> build as we cannot tell and we're better safe than sorry (maybe intitial build)
+      return true;
+    }
+
+    // then we would build if any resource outside the exclusions is modified
+    return isBuildNeededDueToDelta(project, projectDelta, monitor);
+  }
+
+  /**
+   * Check if a build is needed. It will consider a list of exclusions which are known to be irrelevant to the build (if
+   * changed).
+   * 
+   * @param project the project to check for
+   * @param projectDelta the delta for the given project, must not be <code>null</code>
+   * @param monitor a monitor
+   * @return <code>true</code> if the build for the project should proceed
+   * @throws CoreException
+   */
+  private boolean isBuildNeededDueToDelta(IProject project, IResourceDelta projectDelta, IProgressMonitor monitor)
+      throws CoreException {
 
     if(projectDelta.getAffectedChildren().length == 0) {
       // from the spec of getDelta(), we should not need to build, but in practice, we need to
@@ -487,6 +532,9 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
   protected void clean(final IProgressMonitor monitor) throws CoreException {
     log.debug("Cleaning project {}", getProject().getName()); //$NON-NLS-1$
     final long start = System.currentTimeMillis();
+
+    // reset error marker count
+    getProject().setSessionProperty(SPROP_ERROR_MARKER_COUNT, null);
 
     try {
       methodClean.execute(CLEAN_BUILD, Collections.<String, String> emptyMap(), monitor);
