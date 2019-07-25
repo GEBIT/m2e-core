@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -35,7 +36,6 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.OperationCanceledException;
-import org.eclipse.core.runtime.QualifiedName;
 import org.eclipse.core.runtime.jobs.ISchedulingRule;
 
 import org.codehaus.plexus.util.MatchPatterns;
@@ -52,6 +52,7 @@ import org.eclipse.m2e.core.embedder.IMavenExecutionContext;
 import org.eclipse.m2e.core.internal.IMavenConstants;
 import org.eclipse.m2e.core.internal.M2EUtils;
 import org.eclipse.m2e.core.internal.MavenPluginActivator;
+import org.eclipse.m2e.core.internal.builder.plexusbuildapi.PlexusBuildAPI;
 import org.eclipse.m2e.core.internal.embedder.MavenExecutionContext;
 import org.eclipse.m2e.core.internal.lifecyclemapping.LifecycleMappingFactory;
 import org.eclipse.m2e.core.internal.markers.IMavenMarkerManager;
@@ -68,16 +69,15 @@ import org.eclipse.m2e.core.project.configurator.MojoExecutionKey;
 public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProvider {
   static final Logger log = LoggerFactory.getLogger(MavenBuilder.class);
 
-  private static final String PROJ_PROP_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
+  public static String PROP_FORCE_BUILD = "m2e.forceBuild"; //$NON-NLS-1$
 
   private static final String ELEMENT_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
 
   private static final String ELEMENT_IGNORE = "ignore"; //$NON-NLS-1$
 
-  public static QualifiedName PPROP_FORCE_BUILD = new QualifiedName(MavenBuilder.class.getName(), "forceBuild"); //$NON-NLS-1$
+  public static String PROP_ERROR_MARKER_COUNT = "m2e.errorMarkerCount"; //$NON-NLS-1$
 
-  public static QualifiedName SPROP_ERROR_MARKER_COUNT = new QualifiedName(MavenBuilder.class.getName(),
-      "errorMarkerCount"); //$NON-NLS-1$
+  public static String PROP_MAVEN_MARKER_COUNT = "m2e.mavenMarkerCount"; //$NON-NLS-1$
 
   final MavenBuilderImpl builder = new MavenBuilderImpl(this);
 
@@ -243,6 +243,16 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     }
   }
 
+  private Map<String, Object> getBuildContext() throws CoreException {
+    Map<String, Object> contextState = (Map<String, Object>) getProject()
+        .getSessionProperty(PlexusBuildAPI.BUILD_CONTEXT_KEY);
+    if(contextState == null) {
+      contextState = new HashMap<String, Object>();
+      getProject().setSessionProperty(PlexusBuildAPI.BUILD_CONTEXT_KEY, contextState);
+    }
+    return contextState;
+  }
+
   /**
    * @param kind
    * @return
@@ -250,7 +260,6 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
   private boolean isBuildNeeded(int buildKind, IProgressMonitor monitor) throws CoreException {
     IProject project = getProject();
     if(buildKind == FULL_BUILD || buildKind == CLEAN_BUILD) {
-      project.setPersistentProperty(PPROP_FORCE_BUILD, null);
       return true;
     }
 
@@ -272,8 +281,8 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     }
 
     // if a build has been forced, do perform it in any case
-    if(project.getPersistentProperty(PPROP_FORCE_BUILD) != null) {
-      project.setPersistentProperty(PPROP_FORCE_BUILD, null);
+    if(getBuildContext().get(PROP_FORCE_BUILD) != null) {
+      getBuildContext().put(PROP_FORCE_BUILD, null);
       return true;
     }
 
@@ -282,15 +291,24 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     // will not build to prevent endless build loops.
     IResourceDelta projectDelta = getDelta(project);
     int relevantMarkerCount = 0;
+    int mavenMarkerCount = 0;
     for(IMarker problem : projectMarkers) {
+      if(IMavenConstants.MARKER_BUILD_PARTICIPANT_ID.equals(problem.getType())) {
+        if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
+          ++mavenMarkerCount;
+        }
+      }
       if(problem.getType().startsWith("org.eclipse.jdt")) {
         if(IMarker.SEVERITY_ERROR == problem.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
           ++relevantMarkerCount;
         }
       }
     }
-    Integer previousMarkerCount = (Integer) project.getSessionProperty(SPROP_ERROR_MARKER_COUNT);
-    project.setSessionProperty(SPROP_ERROR_MARKER_COUNT, relevantMarkerCount > 0 ? relevantMarkerCount : null);
+    Integer previousMarkerCount = (Integer) getBuildContext().get(PROP_ERROR_MARKER_COUNT);
+    getBuildContext().put(PROP_ERROR_MARKER_COUNT, relevantMarkerCount > 0 ? relevantMarkerCount : null);
+    if(mavenMarkerCount > 0) {
+      return true;
+    }
     if(previousMarkerCount == null && relevantMarkerCount > 0) {
       // we had no errors before -> maybe the maven build will generate something that will make them go away
     } else if(previousMarkerCount != null && previousMarkerCount.intValue() != relevantMarkerCount) {
@@ -371,7 +389,11 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
             return true;
           }
           for(IPath forceBuildPath : fourceBuildPaths) {
-            if(forceBuildPath.isPrefixOf(resource.getFullPath())) {
+            if(resource.getProjectRelativePath().isPrefixOf(forceBuildPath)) {
+              // must decide later
+              return true;
+            }
+            if(forceBuildPath.isPrefixOf(resource.getProjectRelativePath())) {
               isNeeded[0] = true;
               return false; // no need to check children
             }
@@ -532,9 +554,6 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
   protected void clean(final IProgressMonitor monitor) throws CoreException {
     log.debug("Cleaning project {}", getProject().getName()); //$NON-NLS-1$
     final long start = System.currentTimeMillis();
-
-    // reset error marker count
-    getProject().setSessionProperty(SPROP_ERROR_MARKER_COUNT, null);
 
     try {
       methodClean.execute(CLEAN_BUILD, Collections.<String, String> emptyMap(), monitor);
