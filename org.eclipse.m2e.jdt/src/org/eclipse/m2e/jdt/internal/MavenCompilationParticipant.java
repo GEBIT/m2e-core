@@ -11,15 +11,20 @@
 
 package org.eclipse.m2e.jdt.internal;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.compiler.CompilationParticipant;
 
 import org.eclipse.m2e.core.internal.IMavenConstants;
 import org.eclipse.m2e.core.internal.builder.MavenBuilder;
+import org.eclipse.m2e.core.internal.builder.plexusbuildapi.PlexusBuildAPI;
 
 
 /**
@@ -49,9 +54,19 @@ public class MavenCompilationParticipant extends CompilationParticipant {
    */
   public void cleanStarting(IJavaProject project) {
     try {
-      project.getProject().setPersistentProperty(MavenBuilder.PPROP_FORCE_BUILD, "true");
+      getBuildContext(project.getProject()).put(MavenBuilder.PROP_FORCE_BUILD, "true");
     } catch(CoreException ex) {
       log.warn("Failed to mark project " + project.getProject().getName() + " for building.");
     }
+  }
+
+  private Map<String, Object> getBuildContext(IProject project) throws CoreException {
+    Map<String, Object> contextState = (Map<String, Object>) project
+        .getSessionProperty(PlexusBuildAPI.BUILD_CONTEXT_KEY);
+    if(contextState == null) {
+      contextState = new HashMap<String, Object>();
+      project.setSessionProperty(PlexusBuildAPI.BUILD_CONTEXT_KEY, contextState);
+    }
+    return contextState;
   }
 }
