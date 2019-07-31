@@ -11,7 +11,6 @@
 
 package org.eclipse.m2e.core.internal.builder;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -39,11 +38,8 @@ import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.jobs.ISchedulingRule;
 
 import org.codehaus.plexus.util.MatchPatterns;
-import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 import org.apache.maven.model.Dependency;
-import org.apache.maven.model.Plugin;
-import org.apache.maven.model.PluginManagement;
 import org.apache.maven.project.MavenProject;
 
 import org.eclipse.m2e.core.MavenPlugin;
@@ -54,7 +50,6 @@ import org.eclipse.m2e.core.internal.M2EUtils;
 import org.eclipse.m2e.core.internal.MavenPluginActivator;
 import org.eclipse.m2e.core.internal.builder.plexusbuildapi.PlexusBuildAPI;
 import org.eclipse.m2e.core.internal.embedder.MavenExecutionContext;
-import org.eclipse.m2e.core.internal.lifecyclemapping.LifecycleMappingFactory;
 import org.eclipse.m2e.core.internal.markers.IMavenMarkerManager;
 import org.eclipse.m2e.core.internal.project.registry.MavenProjectFacade;
 import org.eclipse.m2e.core.internal.project.registry.ProjectRegistryManager;
@@ -68,10 +63,6 @@ import org.eclipse.m2e.core.project.configurator.MojoExecutionKey;
 
 public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProvider {
   static final Logger log = LoggerFactory.getLogger(MavenBuilder.class);
-
-  private static final String ELEMENT_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
-
-  private static final String ELEMENT_IGNORE = "ignore"; //$NON-NLS-1$
 
   public static String PROP_FORCE_BUILD = "m2e.forceBuild"; //$NON-NLS-1$
 
@@ -427,45 +418,7 @@ public class MavenBuilder extends IncrementalProjectBuilder implements DeltaProv
     // TODO this does not merge configuration from profiles
     IMavenProjectFacade facade = projectManager.getProject(project);
     if(facade != null) {
-      MavenProject mavenProject = facade.getMavenProject(monitor);
-      if(mavenProject != null) {
-        String[] result = null;
-        PluginManagement pluginManagement = mavenProject.getPluginManagement();
-        Plugin metadataPlugin = pluginManagement.getPluginsAsMap()
-            .get(LifecycleMappingFactory.LIFECYCLE_MAPPING_PLUGIN_GROUPID + ":" //$NON-NLS-1$
-                + LifecycleMappingFactory.LIFECYCLE_MAPPING_PLUGIN_ARTIFACTID);
-        if(metadataPlugin != null) {
-          Xpp3Dom configurationDom = (Xpp3Dom) metadataPlugin.getConfiguration();
-          if(configurationDom != null) {
-            Xpp3Dom ignoresDom = configurationDom.getChild(ELEMENT_IGNORED_PATHES);
-            if(ignoresDom != null) {
-              Xpp3Dom[] ignores = ignoresDom.getChildren(ELEMENT_IGNORE);
-              if(ignores != null && ignores.length > 0) {
-                result = new String[ignores.length];
-                for(int i = 0; i < ignores.length; ++i) {
-                  result[i] = ignores[i].getValue().trim();
-                }
-              } else if(!ignoresDom.getValue().isEmpty()) {
-                String[] ignoresValues = ignoresDom.getValue().split(",");
-                result = new String[ignoresValues.length];
-                for(int i = 0; i < ignoresValues.length; ++i) {
-                  result[i] = ignoresValues[i].trim();
-                }
-              }
-              if(result != null) {
-                // normalize separators
-                for(int i = 0; i < result.length; ++i) {
-                  result[i] = result[i].replace(File.separatorChar == '/' ? '\\' : '/', File.separatorChar);
-                  if(result[i].endsWith(File.separator)) {
-                    result[i] += "**";
-                  }
-                }
-                return result;
-              }
-            }
-          }
-        }
-      }
+      return facade.getIgnoredPathes();
     }
     return new String[0];
   }
