@@ -1071,7 +1071,12 @@ public class ProjectRegistryManager {
       }
     }
     if(mavenProject == null) {
-      mavenProject = getContextProjects().get(facade);
+      // look in context cache first to avoid project building
+      for(Map.Entry<MavenProjectFacade, MavenProject> entry : getContextProjects().entrySet()) {
+        if(entry.getKey().getArtifactKey().equals(facade.getArtifactKey())) {
+          return entry.getValue();
+        }
+      }
     }
     return mavenProject;
   }
