@@ -486,6 +486,7 @@ public class ProjectRegistryManager {
     context.forcePomFiles(allProcessedPoms);
 
     // phase 2: resolve project dependencies
+    Set<IFile> secondPhaseProcessed = new HashSet<IFile>();
     while(!context.isEmpty()) {
       if(monitor.isCanceled()) {
         throw new OperationCanceledException();
@@ -1118,7 +1119,12 @@ public class ProjectRegistryManager {
       }
     }
     if(mavenProject == null) {
-      mavenProject = getContextProjects().get(facade);
+      // look in context cache first to avoid project building
+      for(Map.Entry<MavenProjectFacade, MavenProject> entry : getContextProjects().entrySet()) {
+        if(entry.getKey().getArtifactKey().equals(facade.getArtifactKey())) {
+          return entry.getValue();
+        }
+      }
     }
     return mavenProject;
   }
