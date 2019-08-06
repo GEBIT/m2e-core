@@ -29,8 +29,12 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 
+import org.codehaus.plexus.util.xml.Xpp3Dom;
+
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginManagement;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.project.MavenProject;
 
@@ -38,6 +42,7 @@ import org.eclipse.m2e.core.embedder.ArtifactKey;
 import org.eclipse.m2e.core.embedder.ArtifactRef;
 import org.eclipse.m2e.core.embedder.ArtifactRepositoryRef;
 import org.eclipse.m2e.core.embedder.IMaven;
+import org.eclipse.m2e.core.internal.lifecyclemapping.LifecycleMappingFactory;
 import org.eclipse.m2e.core.lifecyclemapping.model.IPluginExecutionMetadata;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
 import org.eclipse.m2e.core.project.MavenProjectUtils;
@@ -56,6 +61,10 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
   public static final String PROP_LIFECYCLE_MAPPING = MavenProjectFacade.class.getName() + "/lifecycleMapping";
 
   public static final String PROP_CONFIGURATORS = MavenProjectFacade.class.getName() + "/configurators";
+
+  private static final String ELEMENT_IGNORED_PATHES = "ignoredPathes"; //$NON-NLS-1$
+
+  private static final String ELEMENT_IGNORE = "ignore"; //$NON-NLS-1$
 
   private final ProjectRegistryManager manager;
 
@@ -76,19 +85,21 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
 
   private final String packaging;
 
-  private final IPath[] resourceLocations;
+  private IPath[] resourceLocations;
 
-  private final IPath[] testResourceLocations;
+  private IPath[] testResourceLocations;
 
-  private final IPath[] compileSourceLocations;
+  private IPath[] compileSourceLocations;
 
-  private final IPath[] testCompileSourceLocations;
+  private IPath[] testCompileSourceLocations;
 
-  private final IPath outputLocation;
+  private IPath outputLocation;
 
-  private final IPath testOutputLocation;
+  private IPath testOutputLocation;
 
-  private final IPath buildOutputPath;
+  private IPath buildOutputPath;
+
+  private String[] ignoredPathes = new String[0];
 
   private final Set<ArtifactRepositoryRef> artifactRepositories;
 
@@ -121,23 +132,7 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
     this.packaging = mavenProject.getPackaging();
     this.modules = mavenProject.getModules();
 
-    this.resourceLocations = MavenProjectUtils.getResourceLocations(getProject(), mavenProject.getResources());
-    this.testResourceLocations = MavenProjectUtils.getResourceLocations(getProject(), mavenProject.getTestResources());
-    this.compileSourceLocations = MavenProjectUtils.getSourceLocations(getProject(),
-        mavenProject.getCompileSourceRoots());
-    this.testCompileSourceLocations = MavenProjectUtils.getSourceLocations(getProject(),
-        mavenProject.getTestCompileSourceRoots());
-
-    IPath fullPath = getProject().getFullPath();
-
-    IPath path = getProjectRelativePath(mavenProject.getBuild().getOutputDirectory());
-    this.outputLocation = (path != null) ? fullPath.append(path) : null;
-
-    path = getProjectRelativePath(mavenProject.getBuild().getTestOutputDirectory());
-    this.testOutputLocation = path != null ? fullPath.append(path) : null;
-
-    path = getProjectRelativePath(mavenProject.getBuild().getDirectory());
-    this.buildOutputPath = path != null ? fullPath.append(path) : null;
+    updateLocations(mavenProject);
 
     this.artifactRepositories = new LinkedHashSet<ArtifactRepositoryRef>();
     for(ArtifactRepository repository : mavenProject.getRemoteArtifactRepositories()) {
@@ -157,6 +152,80 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
       i++ ;
     }
     timestamp[timestamp.length - 1] = getModificationStamp(pom);
+  }
+
+  /**
+   * @param mavenProject
+   */
+  public void updateLocations(MavenProject mavenProject) {
+    this.resourceLocations = MavenProjectUtils.getResourceLocations(getProject(), mavenProject.getResources());
+    this.testResourceLocations = MavenProjectUtils.getResourceLocations(getProject(), mavenProject.getTestResources());
+    this.compileSourceLocations = MavenProjectUtils.getSourceLocations(getProject(),
+        mavenProject.getCompileSourceRoots());
+    this.testCompileSourceLocations = MavenProjectUtils.getSourceLocations(getProject(),
+        mavenProject.getTestCompileSourceRoots());
+
+    IPath fullPath = getProject().getFullPath();
+
+    IPath path = getProjectRelativePath(mavenProject.getBuild().getOutputDirectory());
+    this.outputLocation = (path != null) ? fullPath.append(path) : null;
+
+    path = getProjectRelativePath(mavenProject.getBuild().getTestOutputDirectory());
+    this.testOutputLocation = path != null ? fullPath.append(path) : null;
+
+    path = getProjectRelativePath(mavenProject.getBuild().getDirectory());
+    this.buildOutputPath = path != null ? fullPath.append(path) : null;
+
+    this.ignoredPathes = updateIgnoredPathes(mavenProject);
+  }
+
+  /**
+   * @return Returns the ignoredPathes.
+   */
+  @Override
+  public String[] getIgnoredPathes() {
+    return this.ignoredPathes;
+  }
+
+  private String[] updateIgnoredPathes(MavenProject mavenProject) {
+    String[] result = null;
+    PluginManagement pluginManagement = mavenProject.getPluginManagement();
+    Plugin metadataPlugin = pluginManagement.getPluginsAsMap()
+        .get(LifecycleMappingFactory.LIFECYCLE_MAPPING_PLUGIN_GROUPID
+            + ":" //$NON-NLS-1$
+            + LifecycleMappingFactory.LIFECYCLE_MAPPING_PLUGIN_ARTIFACTID);
+    if(metadataPlugin != null) {
+      Xpp3Dom configurationDom = (Xpp3Dom) metadataPlugin.getConfiguration();
+      if(configurationDom != null) {
+        Xpp3Dom ignoresDom = configurationDom.getChild(ELEMENT_IGNORED_PATHES);
+        if(ignoresDom != null) {
+          Xpp3Dom[] ignores = ignoresDom.getChildren(ELEMENT_IGNORE);
+          if(ignores != null && ignores.length > 0) {
+            result = new String[ignores.length];
+            for(int i = 0; i < ignores.length; ++i) {
+              result[i] = ignores[i].getValue().trim();
+            }
+          } else if(!ignoresDom.getValue().isEmpty()) {
+            String[] ignoresValues = ignoresDom.getValue().split(",");
+            result = new String[ignoresValues.length];
+            for(int i = 0; i < ignoresValues.length; ++i) {
+              result[i] = ignoresValues[i].trim();
+            }
+          }
+          if(result != null) {
+            // normalize separators
+            for(int i = 0; i < result.length; ++i) {
+              result[i] = result[i].replace(File.separatorChar == '/' ? '\\' : '/', File.separatorChar);
+              if(result[i].endsWith(File.separator)) {
+                result[i] += "**";
+              }
+            }
+            return result;
+          }
+        }
+      }
+    }
+    return new String[0];
   }
 
   /**
