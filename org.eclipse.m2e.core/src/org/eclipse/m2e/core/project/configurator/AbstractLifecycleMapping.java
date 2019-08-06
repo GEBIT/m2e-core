@@ -126,6 +126,7 @@ public abstract class AbstractLifecycleMapping implements ILifecycleMapping {
             throw new CoreException(new Status(IStatus.ERROR, IMavenConstants.PLUGIN_ID, message, e));
           }
         }
+        projectFacade.updateLocations(mavenProject);
       } finally {
         snapshot.restore(mavenProject);
       }
