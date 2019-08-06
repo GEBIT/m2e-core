@@ -160,4 +160,14 @@ public interface IMavenProjectFacade {
   public String getLifecycleMappingId();
 
   public Map<MojoExecutionKey, List<IPluginExecutionMetadata>> getMojoExecutionMapping();
+
+  /**
+   * Update project locations after the project has been configured
+   */
+  public void updateLocations(MavenProject mavenProject);
+
+  /**
+   * @return Returns the ignoredPathes.
+   */
+  public String[] getIgnoredPathes();
 }
