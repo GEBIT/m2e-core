@@ -39,6 +39,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.ICoreRunnable;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.QualifiedName;
 
@@ -142,6 +143,8 @@ public class MavenBuilderImpl {
                 dependencies.addAll(sub);
               }
             }
+          } catch(OperationCanceledException e) {
+            throw e;
           } catch(Exception e) {
             log.debug("Exception in build participant {}", participant.getClass().getName(), e);
             buildErrors.put(e, mojoExecutionKey);
@@ -164,6 +167,8 @@ public class MavenBuilderImpl {
               diff(debugRefreshFiles, participantResults.getFiles()), monitor);
         }
       }
+    } catch(OperationCanceledException e) {
+      throw e;
     } catch(Exception e) {
       log.debug("Unexpected build exception", e);
       buildErrors.put(e, null);
