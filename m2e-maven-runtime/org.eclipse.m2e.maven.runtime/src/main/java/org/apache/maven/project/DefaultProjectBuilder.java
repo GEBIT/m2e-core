@@ -84,9 +84,6 @@ public class DefaultProjectBuilder
     implements ProjectBuilder
 {
 
-    public static final String DISABLE_GLOBAL_MODEL_CACHE_SYSTEM_PROPERTY =
-            "maven.defaultProjectBuilder.disableGlobalModelCache";
-
     @Requirement
     private Logger logger;
 
@@ -111,8 +108,6 @@ public class DefaultProjectBuilder
     @Requirement
     private ProjectDependenciesResolver dependencyResolver;
 
-    private final ReactorModelCache modelCache = new ReactorModelCache();
-
     // ----------------------------------------------------------------------
     // MavenProjectBuilder Implementation
     // ----------------------------------------------------------------------
@@ -122,12 +117,7 @@ public class DefaultProjectBuilder
         throws ProjectBuildingException
     {
         return build( pomFile, new FileModelSource( pomFile ),
-                new InternalConfig( request, null, useGlobalModelCache() ? getModelCache() : null ) );
-    }
-
-    private boolean useGlobalModelCache()
-    {
-        return !Boolean.getBoolean( DISABLE_GLOBAL_MODEL_CACHE_SYSTEM_PROPERTY );
+                new InternalConfig( request, null) );
     }
 
     @Override
@@ -135,7 +125,7 @@ public class DefaultProjectBuilder
         throws ProjectBuildingException
     {
         return build( null, modelSource,
-                 new InternalConfig( request, null, useGlobalModelCache() ? getModelCache() : null ) );
+                 new InternalConfig( request, null) );
     }
 
     private ProjectBuildingResult build( File pomFile, ModelSource modelSource, InternalConfig config )
@@ -287,7 +277,8 @@ public class DefaultProjectBuilder
         request.setUserProperties( configuration.getUserProperties() );
         request.setBuildStartTime( configuration.getBuildStartTime() );
         request.setModelResolver( resolver );
-        request.setModelCache( config.modelCache );
+        // GEBIT: Use NotDefaultModelCache which will use the shared cache of the session
+        request.setModelCache( new NotDefaultModelCache(configuration.getRepositorySession()) );
 
         return request;
     }
@@ -306,7 +297,7 @@ public class DefaultProjectBuilder
         org.eclipse.aether.artifact.Artifact pomArtifact = RepositoryUtils.toArtifact( artifact );
         pomArtifact = ArtifactDescriptorUtils.toPomArtifact( pomArtifact );
 
-        InternalConfig config = new InternalConfig( request, null, useGlobalModelCache() ? getModelCache() : null );
+        InternalConfig config = new InternalConfig( request, null );
 
         boolean localProject;
 
@@ -368,8 +359,7 @@ public class DefaultProjectBuilder
 
         ReactorModelPool modelPool = new ReactorModelPool();
 
-        InternalConfig config = new InternalConfig( request, modelPool,
-                useGlobalModelCache() ? getModelCache() : new ReactorModelCache() );
+        InternalConfig config = new InternalConfig( request, modelPool );
 
         Map<String, MavenProject> projectIndex = new HashMap<>( 256 );
 
@@ -1058,24 +1048,16 @@ public class DefaultProjectBuilder
 
         private final ReactorModelPool modelPool;
 
-        private final ReactorModelCache modelCache;
-
-        InternalConfig( ProjectBuildingRequest request, ReactorModelPool modelPool, ReactorModelCache modelCache )
+        InternalConfig( ProjectBuildingRequest request, ReactorModelPool modelPool )
         {
             this.request = request;
             this.modelPool = modelPool;
-            this.modelCache = modelCache;
             session =
                 LegacyLocalRepositoryManager.overlay( request.getLocalRepository(), request.getRepositorySession(),
                                                       repoSystem );
             repositories = RepositoryUtils.toRepos( request.getRemoteRepositories() );
         }
 
-    }
-
-    private ReactorModelCache getModelCache()
-    {
-        return this.modelCache;
     }
 
 }
