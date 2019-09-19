@@ -1050,22 +1050,7 @@ public class DefaultProjectBuilder
     class InternalConfig
     {
 
-<<<<<<< Upstream, based on bb66a0c412c2623d90a52e038b2b75a8efda2d7c
-			Boolean profilesXml = profilesXmls.get(basedir);
-			if (profilesXml == null) {
-				profilesXml = new File(basedir, "profiles.xml").exists();
-				profilesXmls.put(basedir, profilesXml);
-			}
-			if (profilesXml) {
-				return modelId;
-			}
-		}
-
-		return null;
-	}
-=======
         private final ProjectBuildingRequest request;
->>>>>>> 63c6791 Maven 3.6.2 (original)
 
         private final RepositorySystemSession session;
 
