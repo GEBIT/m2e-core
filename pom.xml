@@ -81,7 +81,7 @@
     <repository>
       <id>Orbit 2019-06 M3</id>
       <layout>p2</layout>
-      <url>https://download.eclipse.org/tools/orbit/downloads/drops/S20190521195709/repository/</url>
+      <url>https://download.eclipse.org/tools/orbit/downloads/drops/R20190531194818/repository/</url>
     </repository>
   </repositories>
 
