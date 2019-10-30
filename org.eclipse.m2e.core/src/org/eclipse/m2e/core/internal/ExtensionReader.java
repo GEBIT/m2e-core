@@ -11,6 +11,8 @@
 
 package org.eclipse.m2e.core.internal;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -163,6 +165,7 @@ public class ExtensionReader {
     return frameworks;
   }
 
+  @SuppressWarnings("unchecked")
   public static Map<String, ILifecycleParticipant> readLifecycleParticipants() {
     Map<String, ILifecycleParticipant> lifecycleParticipants = new HashMap<>();
 
@@ -173,24 +176,24 @@ public class ExtensionReader {
       for(IExtension extension : mappingsExtensions) {
         IConfigurationElement[] elements = extension.getConfigurationElements();
         String hint = null;
+        Class<? extends AbstractMavenLifecycleParticipant> impl = null;
         AbstractMavenLifecycleParticipant participant = null;
         for(IConfigurationElement element : elements) {
           if(element.getName().equals("participant")) {
             hint = element.getAttribute("hint");
-            if(element.getAttribute("class") != null) {
+            String implClass = element.getAttribute("class");
+            if(implClass != null) {
+              Bundle contributor = Platform.getBundle(element.getContributor().getName());
               try {
-                participant = (AbstractMavenLifecycleParticipant) element.createExecutableExtension("class"); //$NON-NLS-1$
-              } catch(CoreException ex) {
+                impl = (Class<? extends AbstractMavenLifecycleParticipant>) contributor.loadClass(implClass);
+              } catch(ClassNotFoundException ex) {
                 log.error(ex.getMessage(), ex);
               }
             }
           }
         }
         if(hint != null) {
-          LifecycleParticipant lifecycleParticipant = new LifecycleParticipant(hint);
-          if(participant != null) {
-            lifecycleParticipant.setParticipant(participant);
-          }
+          LifecycleParticipant lifecycleParticipant = new LifecycleParticipant(hint, impl);
           lifecycleParticipants.put(hint, lifecycleParticipant);
         }
       }
@@ -202,14 +205,11 @@ public class ExtensionReader {
   private static class LifecycleParticipant implements ILifecycleParticipant {
     private String hint;
 
-    private AbstractMavenLifecycleParticipant participant;
+    private Class<? extends AbstractMavenLifecycleParticipant> impl;
 
-    LifecycleParticipant(String hint) {
+    LifecycleParticipant(String hint, Class<? extends AbstractMavenLifecycleParticipant> impl) {
       this.hint = hint;
-    }
-
-    public void setParticipant(AbstractMavenLifecycleParticipant participant) {
-      this.participant = participant;
+      this.impl = impl;
     }
 
     /* (non-Javadoc)
@@ -222,8 +222,30 @@ public class ExtensionReader {
     /* (non-Javadoc)
     * @see org.eclipse.m2e.core.internal.project.ILifecycleParticipant#getParticipant()
     */
-    public AbstractMavenLifecycleParticipant getParticipant() {
-      return participant;
+    public AbstractMavenLifecycleParticipant getParticipant(AbstractMavenLifecycleParticipant mavenParticipant) {
+      if(impl == null) {
+        return mavenParticipant;
+      }
+      try {
+        try {
+          Constructor<? extends AbstractMavenLifecycleParticipant> constructor = impl
+              .getConstructor(AbstractMavenLifecycleParticipant.class);
+          return constructor.newInstance(mavenParticipant);
+        } catch(NoSuchMethodException ex) {
+          // try no-arg constructor
+          try {
+            Constructor<? extends AbstractMavenLifecycleParticipant> constructor = impl.getConstructor();
+            return constructor.newInstance();
+          } catch(NoSuchMethodException ex1) {
+            log.error(ex1.getMessage(), ex1);
+          }
+        }
+      } catch(SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException
+          | InvocationTargetException ex) {
+        log.error(ex.getMessage(), ex);
+      }
+      // by default use the maven instance
+      return mavenParticipant;
     }
   }
 }

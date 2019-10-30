@@ -108,6 +108,8 @@ public class Messages extends NLS {
 
   public static String MavenImpl_error_lookup;
 
+  public static String MavenImpl_error_core_extensions;
+
   public static String MavenImpl_error_missing;
 
   public static String MavenImpl_error_mojo;

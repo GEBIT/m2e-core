@@ -26,7 +26,9 @@ public interface ILifecycleParticipant {
    * Get replacement implementation in m2e scope for the given participant. This is needed for core extensions, as these
    * are not otherwise available out of a MavenProject context.
    * 
-   * @return <code>null</code> if no replacement is available
+   * @param mavenParticipant the participant create by maven. If the replacement participant has a constructur with
+   *          {@link AbstractMavenLifecycleParticipant} argument it is passed to it.
+   * @return <code>mavenParticipant</code> if no replacement is available, never <code>null</code>
    */
-  public AbstractMavenLifecycleParticipant getParticipant();
+  public AbstractMavenLifecycleParticipant getParticipant(AbstractMavenLifecycleParticipant mavenParticipant);
 }

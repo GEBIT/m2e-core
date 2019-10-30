@@ -107,7 +107,7 @@ public class DefaultMavenDependencyResolver extends AbstractMavenDependencyResol
 
   public static void addProjectStructureRequirements(Set<RequiredCapability> requirements, MavenProject mavenProject) {
     // parent requirement
-    Artifact parentArtifact = mavenProject.getParentArtifact();
+    Artifact parentArtifact = mavenProject.getParent() != null ? mavenProject.getParent().getArtifact() : null;
     if(parentArtifact != null) {
       requirements.add(MavenRequiredCapability.createResolvedMavenParent(new ArtifactKey(parentArtifact)));
     }

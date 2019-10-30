@@ -112,8 +112,10 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
             IMavenProjectFacade facade = context.state.getProjectFacade(projectPom);
             if(facade != null) {
               ArtifactKey artifactKey = facade.getArtifactKey();
-              if(groupId.equals(artifactKey.getGroupId()) && artifactId.equals(artifactKey.getArtifactId())
-                  && constraint.containsVersion(versionScheme.parseVersion(artifactKey.getVersion()))) {
+              if(groupId.equals(artifactKey.getGroupId())
+                  && artifactId.equals(artifactKey.getArtifactId())
+                  && (baseVersion.startsWith("$") // assume the version in the workspace
+                      || constraint.containsVersion(versionScheme.parseVersion(artifactKey.getVersion())))) {
                 pom = projectPom;
               }
             } else {
@@ -127,8 +129,10 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
                 if(pomVersion == null && model.getParent() != null) {
                   pomVersion = model.getParent().getVersion();
                 }
-                if(groupId.equals(pomGroupId) && artifactId.equals(model.getArtifactId())
-                    && constraint.containsVersion(versionScheme.parseVersion(pomVersion))) {
+                if(groupId.equals(pomGroupId)
+                    && artifactId.equals(model.getArtifactId())
+                    && (baseVersion.startsWith("$") // assume the version in the workspace
+                        || constraint.containsVersion(versionScheme.parseVersion(pomVersion)))) {
                   pom = projectPom;
                 }
               } catch(CoreException | IOException ex) {
@@ -256,15 +260,15 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
   }
 
   public List<String> findVersions(Artifact artifact) {
-    return findVersions(artifact.getGroupId(), artifact.getArtifactId());
+    return findVersions(artifact.getGroupId(), artifact.getArtifactId(), artifact.getExtension());
   }
 
   @Override
   public List<String> findVersions(org.apache.maven.artifact.Artifact artifact) {
-    return findVersions(artifact.getGroupId(), artifact.getArtifactId());
+    return findVersions(artifact.getGroupId(), artifact.getArtifactId(), artifact.getType());
   }
 
-  private List<String> findVersions(String groupId, String artifactId) {
+  private List<String> findVersions(String groupId, String artifactId, String extension) {
     ArrayList<String> versions = new ArrayList<String>();
 
     if(isDisabled()) {
@@ -278,6 +282,9 @@ public final class EclipseWorkspaceArtifactRepository extends LocalArtifactRepos
     for(MavenProjectFacade facade : context.state.getProjects()) {
       ArtifactKey artifactKey = facade.getArtifactKey();
       if(groupId.equals(artifactKey.getGroupId()) && artifactId.equals(artifactKey.getArtifactId())) {
+        if(!"pom".equals(extension) && !"xml".equals(extension) && !"jar".equals(extension)) {
+          continue;
+        }
         versions.add(artifactKey.getVersion());
       }
     }
