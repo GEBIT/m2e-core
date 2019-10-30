@@ -78,7 +78,7 @@ abstract class BasicProjectRegistry implements Serializable {
     replaceWith(other);
   }
 
-  protected final void replaceWith(BasicProjectRegistry other) {
+  protected final synchronized void replaceWith(BasicProjectRegistry other) {
     clear();
 
     copy(other.workspaceArtifacts, workspaceArtifacts);
@@ -119,10 +119,11 @@ abstract class BasicProjectRegistry implements Serializable {
     return workspacePomFiles.get(pom);
   }
 
-  public MavenProjectFacade getProjectFacade(String groupId, String artifactId, String version) {
-    Set<IFile> paths = workspaceArtifacts.get(new ArtifactKey(groupId, artifactId, version, null));
+  public synchronized MavenProjectFacade getProjectFacade(String groupId, String artifactId, String version) {
+    ArtifactKey artifactKey = new ArtifactKey(groupId, artifactId, version, null);
+    Set<IFile> paths = workspaceArtifacts.get(artifactKey);
     if(paths == null || paths.isEmpty()) {
-      return null;
+        return null;
     }
     for(Iterator<IFile> it = paths.iterator(); it.hasNext();) {
       IFile pomPath = it.next();
@@ -147,7 +148,7 @@ abstract class BasicProjectRegistry implements Serializable {
     return workspacePoms.values().toArray(new MavenProjectFacade[workspacePoms.size()]);
   }
 
-  public Map<ArtifactKey, Collection<IFile>> getWorkspaceArtifacts(String groupId, String artifactId) {
+  public synchronized Map<ArtifactKey, Collection<IFile>> getWorkspaceArtifacts(String groupId, String artifactId) {
     Multimap<ArtifactKey, IFile> artifacts = HashMultimap.create();
     for(Map.Entry<ArtifactKey, Set<IFile>> entry : workspaceArtifacts.entrySet()) {
       ArtifactKey workspaceKey = entry.getKey();
@@ -158,7 +159,7 @@ abstract class BasicProjectRegistry implements Serializable {
     return artifacts.asMap();
   }
 
-  protected void clear() {
+  protected synchronized void clear() {
     workspaceArtifacts.clear();
     workspacePoms.clear();
     workspacePomFiles.clear();
@@ -167,7 +168,7 @@ abstract class BasicProjectRegistry implements Serializable {
     projectRequirements.clear();
   }
 
-  public boolean isValid() {
+  public synchronized boolean isValid() {
     return MavenPluginActivator.getQualifiedVersion().equals(m2e_version) //
         && workspaceArtifacts != null //
         && workspacePoms != null //
