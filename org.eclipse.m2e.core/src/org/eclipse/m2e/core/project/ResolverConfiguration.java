@@ -36,12 +36,22 @@ public class ResolverConfiguration implements Serializable {
 
   private Properties properties;
 
+  private Properties transientProperties;
+
   public Properties getProperties() {
     return this.properties;
   }
 
   public void setProperties(Properties properties) {
     this.properties = properties;
+  }
+
+  public Properties getTransientProperties() {
+    return this.transientProperties;
+  }
+
+  public void setTransientProperties(Properties properties) {
+    this.transientProperties = properties;
   }
 
   public boolean shouldResolveWorkspaceProjects() {

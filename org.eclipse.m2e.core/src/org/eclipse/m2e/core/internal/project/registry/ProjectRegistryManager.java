@@ -767,8 +767,6 @@ public class ProjectRegistryManager {
               if(mavenProject != null && mavenProject.getArtifact() != null) {
                 MavenProjectFacade mavenProjectFacade = new MavenProjectFacade(ProjectRegistryManager.this, pom, mavenProject,
                           resolverConfiguration);
-                resolverConfiguration.setProperties(mavenProject.getProjectBuildingRequest().getUserProperties());
-                ResolverConfigurationIO.saveResolverConfiguration(pom.getProject(), resolverConfiguration);
                 putMavenProject(mavenProjectFacade, mavenProject); // maintain maven project cache
                 facades.put(pom, mavenProjectFacade);
               }
@@ -945,6 +943,13 @@ public class ProjectRegistryManager {
 
     Properties p = request.getUserProperties();
     Properties addProperties = resolverConfiguration.getProperties();
+    if(addProperties != null) {
+      if(p == null) {
+        p = new Properties();
+      }
+      p.putAll(addProperties);
+    }
+    addProperties = resolverConfiguration.getTransientProperties();
     if(addProperties != null) {
       if(p == null) {
         p = new Properties();

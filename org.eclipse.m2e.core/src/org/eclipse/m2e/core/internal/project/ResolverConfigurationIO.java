@@ -14,6 +14,8 @@ package org.eclipse.m2e.core.internal.project;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -25,10 +27,17 @@ import org.slf4j.LoggerFactory;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ProjectScope;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IConfigurationElement;
+import org.eclipse.core.runtime.IExtension;
+import org.eclipse.core.runtime.IExtensionPoint;
+import org.eclipse.core.runtime.IExtensionRegistry;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.core.runtime.preferences.IScopeContext;
 
 import org.eclipse.m2e.core.internal.IMavenConstants;
+import org.eclipse.m2e.core.project.IResolverExtension;
 import org.eclipse.m2e.core.project.ResolverConfiguration;
 
 
@@ -67,6 +76,10 @@ public class ResolverConfigurationIO {
   private static final String PROPERTIES_SEPARATOR = "|";
 
   private static final String ENCODING = "UTF-8";
+
+  private static final String EXTENSION_RESOLVER_EXTENSIONS = "org.eclipse.m2e.core.resolverExtensions";
+
+  private static List<IResolverExtension> resolverExtensions;
 
   /**
    * Current configuration version value. See {@link #P_VERSION}
@@ -129,6 +142,9 @@ public class ResolverConfigurationIO {
     configuration.setSelectedProfiles(projectNode.get(P_SELECTED_PROFILES, "")); //$NON-NLS-1$
     configuration.setLifecycleMappingId(projectNode.get(P_LIFECYCLE_MAPPING_ID, (String) null));
     configuration.setProperties(stringAsProperties(projectNode.get(P_PROPERTIES, null)));
+
+    updateResolverConfiguration(project.getName(), configuration);
+
     return configuration;
   }
 
@@ -183,5 +199,41 @@ public class ResolverConfigurationIO {
     } catch(UnsupportedEncodingException notGonnaHappen) {
     }
     return string;
+  }
+
+  public static void updateResolverConfiguration(String projectName, ResolverConfiguration resolverConfiguration) {
+    getExtensions().stream().forEach(c -> c.updateResolverConfiguration(projectName, resolverConfiguration));
+  }
+
+  protected static List<IResolverExtension> getExtensions() {
+    if(resolverExtensions == null) {
+      synchronized(ResolverConfigurationIO.class) {
+        if(resolverExtensions == null) {
+          resolverExtensions = readExtensions();
+        }
+      }
+    }
+    return resolverExtensions;
+  }
+
+  protected static List<IResolverExtension> readExtensions() {
+    List<IResolverExtension> resolvers = new ArrayList<>();
+
+    IExtensionRegistry registry = Platform.getExtensionRegistry();
+    IExtensionPoint ccpExtensionPoint = registry.getExtensionPoint(EXTENSION_RESOLVER_EXTENSIONS);
+    if(ccpExtensionPoint != null) {
+      IExtension[] ccpExtensions = ccpExtensionPoint.getExtensions();
+      for(IExtension extension : ccpExtensions) {
+        for(IConfigurationElement element : extension.getConfigurationElements()) {
+          try {
+            resolvers.add((IResolverExtension) element.createExecutableExtension("class"));
+          } catch(CoreException ex) {
+            log.error("Cannot instantiate IWorkspaceClassifierResolver", ex);
+          }
+        }
+      }
+    }
+
+    return resolvers;
   }
 }

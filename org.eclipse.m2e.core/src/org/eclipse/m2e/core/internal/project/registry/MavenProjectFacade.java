@@ -43,6 +43,7 @@ import org.eclipse.m2e.core.embedder.ArtifactRef;
 import org.eclipse.m2e.core.embedder.ArtifactRepositoryRef;
 import org.eclipse.m2e.core.embedder.IMaven;
 import org.eclipse.m2e.core.internal.lifecyclemapping.LifecycleMappingFactory;
+import org.eclipse.m2e.core.internal.project.ResolverConfigurationIO;
 import org.eclipse.m2e.core.lifecyclemapping.model.IPluginExecutionMetadata;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
 import org.eclipse.m2e.core.project.MavenProjectUtils;
@@ -368,6 +369,7 @@ public class MavenProjectFacade implements IMavenProjectFacade, Serializable {
   }
 
   public ResolverConfiguration getResolverConfiguration() {
+    ResolverConfigurationIO.updateResolverConfiguration(pom.getProject().getName(), resolverConfiguration);
     return resolverConfiguration;
   }
 
