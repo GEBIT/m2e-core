@@ -19,7 +19,9 @@ import javax.inject.Singleton;
 import org.apache.maven.plugin.DefaultPluginRealmCache;
 import org.apache.maven.project.MavenProject;
 
+import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
+import org.eclipse.m2e.core.embedder.IMavenExecutionContext;
 
 
 /**
@@ -33,7 +35,12 @@ public class EclipsePluginRealmCache extends DefaultPluginRealmCache implements 
     protected void flush(Key cacheKey) {
       CacheRecord cacheRecord = cache.remove(cacheKey);
       if(cacheRecord != null) {
-        disposeClassRealm(cacheRecord.getRealm());
+        IMavenExecutionContext currentContext = MavenPlugin.getMaven().getExecutionContext();
+        if(currentContext == null) {
+          disposeClassRealm(cacheRecord.getRealm());
+        } else {
+          currentContext.onContextEnd(() -> disposeClassRealm(cacheRecord.getRealm()));
+        }
       }
     }
   };

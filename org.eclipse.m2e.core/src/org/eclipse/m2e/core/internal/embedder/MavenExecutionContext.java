@@ -14,6 +14,7 @@ package org.eclipse.m2e.core.internal.embedder;
 import static org.eclipse.m2e.core.internal.M2EUtils.copyProperties;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -59,10 +60,14 @@ public class MavenExecutionContext implements IMavenExecutionContext {
 
   private final MavenImpl maven;
 
+  private MavenExecutionContext parent;
+
   private MavenExecutionRequest request;
 
   // TODO maybe delegate to parent context
   private Map<String, Object> context;
+
+  private List<Runnable> contextEndListeners;
 
   public MavenExecutionContext(MavenImpl maven) {
     this.maven = maven;
@@ -105,7 +110,7 @@ public class MavenExecutionContext implements IMavenExecutionContext {
       stack = new ArrayDeque<MavenExecutionContext>();
       threadLocal.set(stack);
     }
-    final MavenExecutionContext parent = stack.peek();
+    parent = stack.peek();
 
     if(this == parent) {
       // shortcut the setup logic, this is nested invocation of the same context
@@ -152,13 +157,34 @@ public class MavenExecutionContext implements IMavenExecutionContext {
       return executeBare(project, callable, monitor);
     } finally {
       sessionScope.exit();
-      stack.pop();
+      MavenExecutionContext executionContext = stack.pop();
+      executionContext.dispose();
       if(stack.isEmpty()) {
         threadLocal.set(null); // TODO decide if this is useful
       }
       legacySupport.setSession(origLegacySession);
       request = origRequest;
       context = origContext;
+    }
+  }
+
+  @Override
+  public void onContextEnd(Runnable runnable) {
+    if(parent != null && parent != this) {
+      parent.onContextEnd(runnable);
+    } else {
+      if(contextEndListeners == null) {
+        contextEndListeners = new ArrayList<>();
+      }
+      contextEndListeners.add(runnable);
+    }
+  }
+
+  private void dispose() {
+    if((parent == null || parent == this) && contextEndListeners != null) {
+      // outermost context
+      contextEndListeners.forEach(it -> it.run());
+      contextEndListeners.clear();
     }
   }
 

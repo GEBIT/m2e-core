@@ -104,4 +104,6 @@ public interface IMavenExecutionContext {
    */
   ProjectBuildingRequest newProjectBuildingRequest();
 
+  void onContextEnd(Runnable runnable);
+
 }
