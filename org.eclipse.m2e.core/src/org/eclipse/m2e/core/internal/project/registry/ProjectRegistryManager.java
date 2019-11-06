@@ -752,7 +752,7 @@ public class ProjectRegistryManager {
           (executionContext, pm) -> {
             Map<File, MavenExecutionResult> mavenResults = getMaven().readMavenProjects(pomFiles.stream()
                 .filter(IFile::isAccessible).map(pom -> pom.getLocation().toFile()).collect(Collectors.toList()),
-                executionContext.newProjectBuildingRequest());
+                executionContext.newProjectBuildingRequest().setResolveDependencies(true));
 
             Map<IFile, MavenProjectFacade> facades = new HashMap<>(mavenResults.size(), 1.f);
             for (IFile pom : pomFiles) {
