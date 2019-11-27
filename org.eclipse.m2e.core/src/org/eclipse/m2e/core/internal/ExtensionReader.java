@@ -11,7 +11,6 @@
 
 package org.eclipse.m2e.core.internal;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -45,7 +44,8 @@ import org.eclipse.m2e.core.project.IMavenProjectChangedListener;
  * @author Eugene Kuleshov
  */
 public class ExtensionReader {
-  private static final Logger log = LoggerFactory.getLogger(ExtensionReader.class);
+
+  static final Logger log = LoggerFactory.getLogger(ExtensionReader.class);
 
   public static final String EXTENSION_ARCHETYPES = IMavenConstants.PLUGIN_ID + ".archetypeCatalogs"; //$NON-NLS-1$
 
@@ -61,11 +61,19 @@ public class ExtensionReader {
 
   private static final String ELEMENT_REMOTE_ARCHETYPE = "remote"; //$NON-NLS-1$
 
+  private static final String ELEMENT_PARTICIPANT = "participant"; //$NON-NLS-1$
+
   private static final String ATTR_NAME = "name"; //$NON-NLS-1$
 
   private static final String ATTR_URL = "url"; //$NON-NLS-1$
 
   private static final String ATTR_DESCRIPTION = "description"; //$NON-NLS-1$
+
+  private static final String ATTR_CLASS = "class"; //$NON-NLS-1$
+
+  private static final String ATTR_PARTICIPANT = "participant"; //$NON-NLS-1$
+
+  private static final String ATTR_HINT = "hint"; //$NON-NLS-1$
 
   private static final String ELEMENT_LISTENER = "listener"; //$NON-NLS-1$
 
@@ -129,7 +137,7 @@ public class ExtensionReader {
         for(IConfigurationElement element : elements) {
           if(element.getName().equals(ELEMENT_LISTENER)) {
             try {
-              listeners.add((IMavenProjectChangedListener) element.createExecutableExtension("class")); //$NON-NLS-1$
+              listeners.add((IMavenProjectChangedListener) element.createExecutableExtension(ATTR_CLASS)); //$NON-NLS-1$
             } catch(CoreException ex) {
               log.error(ex.getMessage(), ex);
             }
@@ -153,7 +161,7 @@ public class ExtensionReader {
         for(IConfigurationElement element : elements) {
           if(element.getName().equals("framework")) {
             try {
-              frameworks.add((IIncrementalBuildFramework) element.createExecutableExtension("class")); //$NON-NLS-1$
+              frameworks.add((IIncrementalBuildFramework) element.createExecutableExtension(ATTR_CLASS)); //$NON-NLS-1$
             } catch(CoreException ex) {
               log.error(ex.getMessage(), ex);
             }
@@ -177,11 +185,11 @@ public class ExtensionReader {
         IConfigurationElement[] elements = extension.getConfigurationElements();
         String hint = null;
         Class<? extends AbstractMavenLifecycleParticipant> impl = null;
-        AbstractMavenLifecycleParticipant participant = null;
+        Class<? extends ILifecycleParticipant> participant = DefaultLifecycleParticipant.class;
         for(IConfigurationElement element : elements) {
-          if(element.getName().equals("participant")) {
-            hint = element.getAttribute("hint");
-            String implClass = element.getAttribute("class");
+          if(element.getName().equals(ELEMENT_PARTICIPANT)) {
+            hint = element.getAttribute(ATTR_HINT);
+            String implClass = element.getAttribute(ATTR_CLASS);
             if(implClass != null) {
               Bundle contributor = Platform.getBundle(element.getContributor().getName());
               try {
@@ -190,62 +198,30 @@ public class ExtensionReader {
                 log.error(ex.getMessage(), ex);
               }
             }
+            String participantClass = element.getAttribute(ATTR_PARTICIPANT);
+            if(participantClass != null) {
+              Bundle contributor = Platform.getBundle(element.getContributor().getName());
+              try {
+                participant = (Class<? extends ILifecycleParticipant>) contributor.loadClass(participantClass);
+              } catch(ClassNotFoundException ex) {
+                log.error(ex.getMessage(), ex);
+              }
+            }
           }
         }
         if(hint != null) {
-          LifecycleParticipant lifecycleParticipant = new LifecycleParticipant(hint, impl);
-          lifecycleParticipants.put(hint, lifecycleParticipant);
+          ILifecycleParticipant lifecycleParticipant;
+          try {
+            lifecycleParticipant = participant.getConstructor(String.class, Class.class).newInstance(hint, impl);
+            lifecycleParticipants.put(hint, lifecycleParticipant);
+          } catch(InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException
+              | NoSuchMethodException | SecurityException ex) {
+            log.error(ex.getMessage(), ex);
+          }
         }
       }
     }
 
     return lifecycleParticipants;
-  }
-
-  private static class LifecycleParticipant implements ILifecycleParticipant {
-    private String hint;
-
-    private Class<? extends AbstractMavenLifecycleParticipant> impl;
-
-    LifecycleParticipant(String hint, Class<? extends AbstractMavenLifecycleParticipant> impl) {
-      this.hint = hint;
-      this.impl = impl;
-    }
-
-    /* (non-Javadoc)
-     * @see org.eclipse.m2e.core.internal.project.ILifecycleParticipant#getHint()
-     */
-    public String getHint() {
-      return hint;
-    }
-
-    /* (non-Javadoc)
-    * @see org.eclipse.m2e.core.internal.project.ILifecycleParticipant#getParticipant()
-    */
-    public AbstractMavenLifecycleParticipant getParticipant(AbstractMavenLifecycleParticipant mavenParticipant) {
-      if(impl == null) {
-        return mavenParticipant;
-      }
-      try {
-        try {
-          Constructor<? extends AbstractMavenLifecycleParticipant> constructor = impl
-              .getConstructor(AbstractMavenLifecycleParticipant.class);
-          return constructor.newInstance(mavenParticipant);
-        } catch(NoSuchMethodException ex) {
-          // try no-arg constructor
-          try {
-            Constructor<? extends AbstractMavenLifecycleParticipant> constructor = impl.getConstructor();
-            return constructor.newInstance();
-          } catch(NoSuchMethodException ex1) {
-            log.error(ex1.getMessage(), ex1);
-          }
-        }
-      } catch(SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException
-          | InvocationTargetException ex) {
-        log.error(ex.getMessage(), ex);
-      }
-      // by default use the maven instance
-      return mavenParticipant;
-    }
   }
 }

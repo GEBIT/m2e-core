@@ -761,8 +761,9 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
   /*package*/void processLifecycleParticipants(MavenProject project, MavenExecutionRequest request,
       RepositorySystemSession repoSession) throws CoreException {
-    processLifecycleParticipants(getMavenBasedir(project.getFile()), Collections.singletonList(project),
-        getLifecycleParticipants(project), request, repoSession);
+    File basedir = getMavenBasedir(project.getFile());
+    processLifecycleParticipants(basedir, Collections.singletonList(project),
+        getLifecycleParticipants(basedir, project), request, repoSession);
   }
 
   /*package*/void processLifecycleParticipants(File basedir, List<MavenProject> projects,
@@ -817,7 +818,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   }
 
 
-  private Collection<AbstractMavenLifecycleParticipant> getLifecycleParticipants(MavenProject project)
+  private Collection<AbstractMavenLifecycleParticipant> getLifecycleParticipants(File basedir, MavenProject project)
       throws CoreException {
     Collection<AbstractMavenLifecycleParticipant> participants = new LinkedHashSet<AbstractMavenLifecycleParticipant>();
 
@@ -829,11 +830,15 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
         for(Map.Entry<String, ILifecycleParticipant> participantEntry : lifecycleParticipants.entrySet()) {
           try {
+            ILifecycleParticipant lifecycleParticipant = participantEntry.getValue();
+            if(!lifecycleParticipant.isApplicable(basedir)) {
+              continue;
+            }
             AbstractMavenLifecycleParticipant participant = plexus.lookup(AbstractMavenLifecycleParticipant.class,
                 participantEntry.getKey());
             if(participant != null) {
               // give the m2e extension a chance to replace or wrap it
-              participant = participantEntry.getValue().getParticipant(participant);
+              participant = lifecycleParticipant.getParticipant(participant);
               participants.add(participant);
             }
           } catch(ComponentLookupException e) {
@@ -907,9 +912,11 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
         // call extensions
         for(Map.Entry<File, List<MavenProject>> entry : projectsForBasedir.entrySet()) {
+          File basedir = entry.getKey();
           List<MavenProject> projectList = entry.getValue();
           // use the topmost project
-          Collection<AbstractMavenLifecycleParticipant> participants = getLifecycleParticipants(projectList.get(0));
+          Collection<AbstractMavenLifecycleParticipant> participants = getLifecycleParticipants(basedir,
+              projectList.get(0));
           execute(new ICallable<Void>() {
             public Void call(IMavenExecutionContext context, IProgressMonitor monitor) throws CoreException {
               processLifecycleParticipants(entry.getKey(), projectList, participants, context.getExecutionRequest(),

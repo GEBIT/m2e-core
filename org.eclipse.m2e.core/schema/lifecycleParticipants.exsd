@@ -66,6 +66,17 @@
                </appInfo>
             </annotation>
          </attribute>
+         <attribute name="participant" type="string">
+            <annotation>
+               <documentation>
+                  Optional custom implementation of ILifecycleParticipant to implement isApplicable(). Must have a
+                  (String, Class) public constructor. Should be derived from DefaultLifecycleParticipant.
+               </documentation>
+               <appInfo>
+                  <meta.attribute kind="java" basedOn="org.eclipse.m2e.core.internal.project.ILifecycleParticipant"/>
+               </appInfo>
+            </annotation>
+         </attribute>
       </complexType>
    </element>
 

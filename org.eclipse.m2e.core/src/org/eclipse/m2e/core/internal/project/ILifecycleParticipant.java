@@ -10,6 +10,8 @@
  *******************************************************************************/
 package org.eclipse.m2e.core.internal.project;
 
+import java.io.File;
+
 import org.apache.maven.AbstractMavenLifecycleParticipant;
 
 
@@ -31,4 +33,12 @@ public interface ILifecycleParticipant {
    * @return <code>mavenParticipant</code> if no replacement is available, never <code>null</code>
    */
   public AbstractMavenLifecycleParticipant getParticipant(AbstractMavenLifecycleParticipant mavenParticipant);
+
+  /**
+   * Check whether the given participant is applicable in the given context
+   * 
+   * @param basedir the Maven basedir (aggregator root)
+   * @return <code>true</code> if the extension is applicable
+   */
+  public boolean isApplicable(File basedir);
 }
