@@ -875,7 +875,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
           if(pomList == null) {
             pomList = new ArrayList<>();
             pomsForBasedir.put(basedir, pomList);
-        }
+          }
           pomList.add(pomFile);
         }
 
@@ -932,7 +932,9 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
     } catch(ProjectBuildingException ex) {
       if(ex.getResults() != null) {
-        projectBuildingResults = ex.getResults();
+    	// GEBIT: must use addAll() instead of upstream's simple assignment because in the lifecycle extension
+    	// case, the projectBuildingResults list is filled incrementally
+        projectBuildingResults.addAll(ex.getResults());
       }
     } finally {
       log.debug("Read {} Maven project(s) in {} ms",pomFiles.size(),System.currentTimeMillis()-start); //$NON-NLS-1$
