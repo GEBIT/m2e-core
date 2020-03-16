@@ -886,8 +886,14 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
 
           ProjectBuildingRequest pbr = new DefaultProjectBuildingRequest(configuration);
           processCoreExtensions(pbr, basedir);
-          projectBuildingResults.addAll(lookup(ProjectBuilder.class).build(pomList, false, pbr));
-      }
+          try {
+            projectBuildingResults.addAll(lookup(ProjectBuilder.class).build(pomList, false, pbr));
+          } catch(ProjectBuildingException ex) {
+            if(ex.getResults() != null) {
+              projectBuildingResults.addAll(ex.getResults());
+            }
+          }
+        }
 
         // now group the projects
         Map<File, List<MavenProject>> projectsForBasedir = new HashMap<>();
@@ -927,15 +933,15 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
         }
       } else {
         // just build in one go
-        projectBuildingResults = lookup(ProjectBuilder.class).build(new ArrayList<>(pomFiles), false, configuration);
+        try {
+          projectBuildingResults = lookup(ProjectBuilder.class).build(new ArrayList<>(pomFiles), false, configuration);
+        } catch(ProjectBuildingException ex) {
+          if(ex.getResults() != null) {
+            projectBuildingResults = ex.getResults();
+          }
+        }
       }
 
-    } catch(ProjectBuildingException ex) {
-      if(ex.getResults() != null) {
-    	// GEBIT: must use addAll() instead of upstream's simple assignment because in the lifecycle extension
-    	// case, the projectBuildingResults list is filled incrementally
-        projectBuildingResults.addAll(ex.getResults());
-      }
     } finally {
       log.debug("Read {} Maven project(s) in {} ms",pomFiles.size(),System.currentTimeMillis()-start); //$NON-NLS-1$
     }
