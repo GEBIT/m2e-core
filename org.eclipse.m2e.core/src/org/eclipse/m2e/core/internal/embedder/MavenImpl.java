@@ -892,6 +892,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
             if(ex.getResults() != null) {
               projectBuildingResults.addAll(ex.getResults());
             }
+            log.error("Could not read Maven project: " + ex.getPomFile(), ex);
           }
         }
 
@@ -901,9 +902,13 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
           File basedir = getMavenBasedir(pbr.getPomFile());
           List<MavenProject> projectList = projectsForBasedir.get(basedir);
           MavenProject project = pbr.getProject();
+          if (project == null) {
+            // ignore
+            continue;
+          }
           if(projectList == null) {
             projectList = new ArrayList<>();
-            projectList.add(pbr.getProject());
+            projectList.add(project);
             projectsForBasedir.put(basedir, projectList);
           } else {
             // insert first if path shorter
@@ -1847,7 +1852,7 @@ public class MavenImpl implements IMaven, IMavenConfigurationChangeListener {
   // runtime exceptions are most likely bugs in maven, let them bubble up to the user
       throw e;
     } catch(Exception e) {
-      log.warn("Failed to read extensions descriptor " + getExtensionKey(coreExtension) + ": " + e.getMessage());
+      log.warn("Failed to read extensions descriptor " + getExtensionKey(coreExtension) + ": " + e.getMessage(), e);
     }
     return Collections.emptyList();
   }
