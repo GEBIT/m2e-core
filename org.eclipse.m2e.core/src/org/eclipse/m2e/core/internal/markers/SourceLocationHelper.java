@@ -171,9 +171,10 @@ public class SourceLocationHelper {
 
           // missing transitive managed dependency
           String projectId = mavenProject.getModel().getLocation(SELF).getSource().getModelId();
-          String depId = found.getLocation(SELF).getSource().getModelId();
+          InputLocation depLocation = found.getLocation(SELF);
+          String depId = (depLocation == null) ? null : depLocation.getSource().getModelId();
 
-          if(!projectId.equals(depId)) {
+          if(depId != null && !projectId.equals(depId)) {
             // let's see if it comes from a directly imported pom
             DependencyManagement origMgmt = mavenProject.getOriginalModel().getDependencyManagement();
             org.apache.maven.model.Dependency importDep = findDependencyImport(origMgmt, depId);
