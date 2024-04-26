@@ -493,8 +493,18 @@ public class MavenPomEditor extends FormEditor implements IResourceChangeListene
     //put a msg in the editor saying that the effective pom is loading, in case this is a long running job
     if(effectivePomEditorInput == null) {
       String content = Messages.MavenPomEditor_loading;
-      String name = getPartName() + Messages.MavenPomEditor_effective;
-      effectivePomEditorInput = new MavenStorageEditorInput(name, name, null, content.getBytes(StandardCharsets.UTF_8));
+      // GEBIT: the content type will be deduced from the contents or the name
+      // by org.eclipse.wst.sse.core.internal.modelhandler.ModelHandlerRegistry.getHandlerFor()
+      // Since the content is just plain-text (initially just "Loading Effective POM...")
+      // the content-type will be plain text, for which no handler is available.
+      // Se we have to set a name that can be recognized as xml file "project/effective-pom.xml"
+      // instead of "project/pom.xml [effective]"
+      // This can be reoved for m2e 2.60+, because the editor handling is completely different there.
+      // String name = getPartName() + Messages.MavenPomEditor_effective;
+      String name = getPartName().replaceAll("pom\\.xml", "effective-pom.xml");
+      String tooltip = getPartName() + Messages.MavenPomEditor_effective;
+      effectivePomEditorInput = new MavenStorageEditorInput(name, tooltip, null,
+          content.getBytes(StandardCharsets.UTF_8));
     }
     return effectivePomEditorInput;
   }
