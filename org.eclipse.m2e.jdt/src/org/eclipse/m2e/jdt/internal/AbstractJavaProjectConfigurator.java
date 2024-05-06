@@ -37,6 +37,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.jdt.core.IAccessRule;
+import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
@@ -454,6 +455,9 @@ public abstract class AbstractJavaProjectConfigurator extends AbstractProjectCon
         IClasspathEntryDescriptor descriptor = classpath.addSourceEntry(sourceFolder.getFullPath(), outputPath,
             inclusion, exclusion, true /*generated*/);
         descriptor.setClasspathAttribute(IClasspathManager.TEST_ATTRIBUTE, addTestFlag ? "true" : null);
+        // GEBIT: ignore optional compile problems for tests and generated sources
+        boolean ignoreOptionalProblems = (addTestFlag || sourceFolder.getFullPath().toString().contains("/generated-sources"));
+        descriptor.setClasspathAttribute(IClasspathAttribute.IGNORE_OPTIONAL_PROBLEMS, ignoreOptionalProblems ? "true" : null);
       } else {
         log.info("Not adding source folder " + sourceFolder.getFullPath() + " because it overlaps with "
             + enclosing.getPath());
