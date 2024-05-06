@@ -118,7 +118,7 @@ public abstract class AbstractJavaProjectConfigurator extends AbstractProjectCon
     ENVIRONMENTS.put("1.7", "JavaSE-1.7"); //$NON-NLS-1$ //$NON-NLS-2$
     ENVIRONMENTS.put("1.8", "JavaSE-1.8"); //$NON-NLS-1$ //$NON-NLS-2$
 
-    for(int i = 9; i < 20; i++ ) { //Check from Java 9 to 20, because yeah, Java evolves that fast
+    for(int i = 9; i < 40; i++ ) { //Check from Java 9 to 40, because yeah, Java evolves that fast
       String level = String.valueOf(i);
       IExecutionEnvironment modernJavaSe = JavaRuntime.getExecutionEnvironmentsManager()
           .getEnvironment("JavaSE-" + level);//$NON-NLS-1$
