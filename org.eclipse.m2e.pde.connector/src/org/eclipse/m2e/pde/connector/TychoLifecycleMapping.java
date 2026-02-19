@@ -25,6 +25,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.SubMonitor;
+import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.m2e.core.internal.M2EUtils;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
 import org.eclipse.m2e.core.project.configurator.AbstractCustomizableLifecycleMapping;
@@ -121,14 +122,15 @@ public class TychoLifecycleMapping extends AbstractCustomizableLifecycleMapping 
 		}
 
 		@Override
-		protected void addJavaProjectOptions(Map<String, String> options, ProjectConfigurationRequest request,
-				IProgressMonitor monitor) throws CoreException {
-			IProject project = request.mavenProjectFacade().getProject();
+		protected void addCustomClasspathEntries(IJavaProject javaProject, IClasspathDescriptor classpath) {
+			IProject project = javaProject.getProject();
 			IPluginModelBase model = PluginRegistry.findModel(project);
 			if (model != null) {
-				ClasspathComputer.setClasspath(project, model);
-			} else {
-				super.addJavaProjectOptions(options, request, monitor);
+				try {
+					ClasspathComputer.setClasspath(project, model);
+				} catch (CoreException e) {
+					throw new RuntimeException(e.getMessage(), e);
+				}
 			}
 		}
 
